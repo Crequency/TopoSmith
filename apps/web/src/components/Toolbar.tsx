@@ -3,9 +3,11 @@
 import { useRef, useState } from 'react';
 import { CABLE_SPECS, cableLabel } from '@toposmith/catalog';
 import type { CableType } from '@toposmith/schema';
-import { Icon, uiIcon } from '../lib/icons';
+import { GitHubIcon, Icon, uiIcon } from '../lib/icons';
+import { REPO_URL } from '../lib/project';
 import { selectionCount, useApp } from '../state/store';
 import { Button, NumberInput, Select } from './ui';
+import { AboutDialog } from './AboutDialog';
 import { PresetDialog } from './PresetDialog';
 
 export function Toolbar() {
@@ -27,6 +29,7 @@ export function Toolbar() {
   const setViewport = useApp((s) => s.setViewport);
   const zoomAt = useApp((s) => s.zoomAt);
   const [presetOpen, setPresetOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const clearScenario = useApp((s) => s.clearScenario);
   const exportJson = useApp((s) => s.exportJson);
   const importJson = useApp((s) => s.importJson);
@@ -60,18 +63,30 @@ export function Toolbar() {
   return (
     <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-800 bg-slate-900 px-3 py-2">
       <div className="flex items-center gap-2">
-        {/* 品牌标识：与 favicon 同一份矢量来源（apps/web/public/favicon.svg），保证"页面里的 logo"和"标签栏里的 logo"是一个东西 */}
-        {/* 用 BASE_URL 而不是绝对路径：GitHub Pages 项目站点是子路径（见 vite.config.ts） */}
-        <img
-          src={`${import.meta.env.BASE_URL}favicon.svg`}
-          alt="TopoSmith"
-          width={20}
-          height={20}
-          className="shrink-0"
-        />
-        <span className="text-sm font-bold tracking-tight text-slate-100">TopoSmith</span>
-        <span className="self-baseline text-[11px] text-slate-500">拓扑匠</span>
-        <span className="ml-2 rounded bg-slate-800 px-2 py-0.5 text-[11px] text-slate-300">
+        {/*
+          品牌区做成**大号按钮**：点开"关于"。
+          标识与 favicon 同一份矢量来源（BASE_URL 而非绝对路径 —— GitHub Pages 是子路径）。
+          场景名放在按钮外面：它是状态显示，不该跟着一起变成可点区域。
+        */}
+        <button
+          type="button"
+          onClick={() => setAboutOpen(true)}
+          title="关于 TopoSmith（版本、许可、源码、在线试用）"
+          className="flex items-center gap-2.5 rounded-lg border border-transparent px-2 py-1 text-left transition hover:border-slate-700 hover:bg-slate-800/60 active:bg-slate-800"
+        >
+          <img
+            src={`${import.meta.env.BASE_URL}favicon.svg`}
+            alt=""
+            width={26}
+            height={26}
+            className="shrink-0"
+          />
+          <span className="flex flex-col leading-tight">
+            <span className="text-base font-bold tracking-tight text-slate-100">TopoSmith</span>
+            <span className="text-[10px] text-slate-500">拓扑匠 · 网络拓扑推演器</span>
+          </span>
+        </button>
+        <span className="rounded bg-slate-800 px-2 py-0.5 text-[11px] text-slate-300">
           {scenario.name}
         </span>
       </div>
@@ -189,9 +204,22 @@ export function Toolbar() {
             event.target.value = '';
           }}
         />
+        <span className="mx-0.5 h-5 w-px bg-slate-800" aria-hidden />
+        {/* 顶栏最右侧：GitHub 图标按钮，指向 git 远端对应的仓库 */}
+        <a
+          href={REPO_URL}
+          target="_blank"
+          rel="noreferrer noopener"
+          title="在 GitHub 上查看源码（Crequency/TopoSmith）"
+          aria-label="GitHub 仓库"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-700 text-slate-300 transition hover:border-sky-500 hover:text-sky-300"
+        >
+          <GitHubIcon size={16} />
+        </a>
       </div>
 
       {presetOpen && <PresetDialog onClose={() => setPresetOpen(false)} />}
+      {aboutOpen && <AboutDialog onClose={() => setAboutOpen(false)} />}
     </header>
   );
 }

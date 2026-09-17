@@ -19,7 +19,7 @@
   <a href="https://github.com/Crequency/TopoSmith/actions/workflows/ci.yml"><img src="https://github.com/Crequency/TopoSmith/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/tests-31%20engine%20%C2%B7%20182%20web-brightgreen" alt="Tests">
-  <img src="https://img.shields.io/badge/build-436%20kB%20%C2%B7%20135%20kB%20gzip-blue" alt="Build size">
+  <img src="https://img.shields.io/badge/build-442%20kB%20%C2%B7%20137%20kB%20gzip-blue" alt="Build size">
   <img src="https://img.shields.io/badge/TypeScript-strict-3178c6" alt="TypeScript strict">
   <img src="https://img.shields.io/badge/backend-none-8b5cf6" alt="No backend">
   <img src="https://img.shields.io/badge/status-M0-orange" alt="Status: M0">
