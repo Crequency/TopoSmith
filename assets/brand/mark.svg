@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  TopoSmith 图形标识（mark）
+
+  设计：把「拓扑」与「匠」合成一个记号 ——
+    · 三个**方形**端点是终端设备（台式机/服务器那种方盒子，也是设备卡片的样子）；
+    · 中间**圆形**枢纽是交换机，也是整张图的中心；
+    · 三者连成字母 **T**（Topo 的首字母）。
+  配色取应用速率色标的两端：青（sky-400，界面强调色）→ 绿（emerald-400，链路可用）。
+  徽章底用画布同色（slate-950）+ 一圈描边，于是在浅色浏览器标签栏上也有清晰轮廓。
+
+  尺寸约定：64×64 画布，内容边界 x 7.6–56.4 / y 14.1–49.9（四周留边 ≥7.6），
+  最小可用尺寸 16px —— 16px 下方形与圆形的差别已经看不清，但"一根横杠 + 一根竖杠
+  + 端头小方块"的 T 形轮廓仍然成立。
+  派生文件（favicon、PNG）由 `pnpm brand` 生成，勿手工编辑。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="TopoSmith">
+  <defs>
+    <linearGradient id="ts-wire" x1="6" y1="10" x2="58" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#34d399"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="64" height="64" rx="14" fill="#020617"/>
+  <rect x="1" y="1" width="62" height="62" rx="13" fill="none" stroke="#1e293b" stroke-width="2"/>
+
+  <!-- 连线：横杠 + 竖杠 -->
+  <g fill="none" stroke="url(#ts-wire)" stroke-width="4.4" stroke-linecap="round">
+    <path d="M12 18.5 H52"/>
+    <path d="M32 18.5 V45.5"/>
+  </g>
+
+  <!-- 节点：三个方端点 + 一个圆枢纽 -->
+  <g fill="url(#ts-wire)">
+    <rect x="7.6" y="14.1" width="8.8" height="8.8" rx="2.4"/>
+    <rect x="47.6" y="14.1" width="8.8" height="8.8" rx="2.4"/>
+    <rect x="27.6" y="41.1" width="8.8" height="8.8" rx="2.4"/>
+    <circle cx="32" cy="18.5" r="8.4"/>
+  </g>
+</svg>

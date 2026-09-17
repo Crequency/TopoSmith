@@ -1,0 +1,87 @@
+@import 'tailwindcss';
+
+/*
+ * 全局基线。
+ *
+ * 项目约定（用户指定）：样式一律写在 className 上，不新增语义化 CSS 类。
+ * 这里只保留无法用 Tailwind 类表达的基线规则，以及字体族声明。
+ */
+
+/*
+ * 字体族必须显式列出中文字体。
+ *
+ * 本机（开发容器）没有安装任何 CJK 字体，`sans-serif` 会回退到 DejaVu Sans，
+ * 中文全部渲染成方框；而在 Windows / macOS 客户端上若不点名，
+ * 浏览器也可能回退到字形不匹配的字体。显式列出主流中文字体即可稳定。
+ */
+@theme {
+  --font-sans:
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC',
+    'Source Han Sans SC', 'WenQuanYi Micro Hei', ui-sans-serif, system-ui, sans-serif;
+  --font-mono:
+    ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overscroll-behavior: none;
+  background-color: #020617;
+  font-family: var(--font-sans);
+}
+
+/* 画布需要吃掉浏览器默认的触摸手势，否则平移会变成页面滚动 */
+canvas {
+  touch-action: none;
+}
+
+/*
+ * 滚动条（FR-53）。
+ *
+ * 这是本文件里唯一"必须用伪元素写"的东西：`::-webkit-scrollbar` 系列没有对应的
+ * Tailwind 工具类（除非引入插件），而默认的浅色滚动条在 slate-950 的深色界面上
+ * 像一块贴错地方的胶带。因此这里做成**全局基线**，而不是给每个容器加类名 ——
+ * 侧栏、检查器、下拉框、`.overflow-auto` 的任何一处都自动一致。
+ *
+ * 两个标准：
+ *   · WebKit/Blink 用 `::-webkit-scrollbar` 系列（可精确指定轨道/滑块/交叉角）；
+ *   · Firefox 只认 `scrollbar-width` / `scrollbar-color`（写在通配选择器上即可）。
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 #0b1220;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background-color: #0b1220;
+}
+
+::-webkit-scrollbar-thumb {
+  /* 描边用轨道色 + background-clip，等于给滑块做出"内缩圆角"的效果 */
+  background-color: #334155;
+  border: 2px solid #0b1220;
+  border-radius: 6px;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #475569;
+}
+
+::-webkit-scrollbar-thumb:active {
+  background-color: #0ea5e9;
+}
+
+::-webkit-scrollbar-corner {
+  background-color: #0b1220;
+}

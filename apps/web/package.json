@@ -1,0 +1,33 @@
+{
+  "name": "@toposmith/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "TopoSmith 网页应用：拓扑画布 + 配置面板 + 四类诊断",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@toposmith/catalog": "workspace:*",
+    "@toposmith/engine": "workspace:*",
+    "@toposmith/schema": "workspace:*",
+    "lucide": "^1.46.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^3.2.4"
+  }
+}

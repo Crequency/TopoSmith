@@ -1,0 +1,19 @@
+packages:
+  - 'packages/*'
+  - 'apps/*'
+
+# ────────────────────────────────────────────────────────────────
+# pnpm 11 起**不再读取项目 .npmrc**，配置统一写在本文件里。
+#
+# storeDir：pnpm 默认 store 在 ~/.local/share/pnpm/store（工作区之外）。
+# 本机 AI 会话的 DSH 文件沙箱是 workspace-write，只能写会话工作区，
+# 于是默认 store 的 sqlite 索引会报：
+#   [ERR_SQLITE_ERROR] unable to open database file
+# 指向工作区内的共享 store（tools 工作区已有 .pnpm-shared-store/v11）即可。
+# ⚠️ 换机器/换工作区路径时这一行必须同步修改。
+# ────────────────────────────────────────────────────────────────
+storeDir: /home/dynesshely/dsh-workspaces/tools/.pnpm-shared-store
+
+# esbuild（Vite 的依赖）的 postinstall 需要放行
+allowBuilds:
+  esbuild: true

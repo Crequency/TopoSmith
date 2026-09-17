@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="TopoSmith（拓扑匠）— 浏览器内的网络拓扑绘制与连通性推演器：通不通、走哪条路、能跑多快、域名怎么解析过去。"
+    />
+    <title>TopoSmith · 拓扑匠</title>
+    <!--
+      favicon 全部由 `pnpm brand` 从 assets/brand/mark.svg 派生（勿手工替换单个文件）：
+      SVG 给现代浏览器（矢量、任何 DPI 都清晰），PNG 兜底旧浏览器与"添加到主屏幕"。
+    -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- 应用本身是深色画布，标签栏配色跟随品牌底色 -->
+    <meta name="theme-color" content="#020617" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

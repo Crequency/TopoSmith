@@ -1,0 +1,13 @@
+{
+  "name": "@toposmith/schema",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "TopoSmith 输入契约：场景/设备/端口/线缆类型定义与导入校验",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}
