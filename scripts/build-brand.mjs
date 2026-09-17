@@ -10,37 +10,10 @@
  * SVG → PNG 只需"打开 → 元素截图"，不必引入 sharp/resvg 这类原生依赖。
  */
 
-import { createRequire } from 'node:module';
 import { chmodSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-
-const require = createRequire(import.meta.url);
-
-/**
- * 取 Playwright 的 Chromium。
- *
- * 优先按标准方式解析（装了 playwright 就能用）；本机开发容器里 playwright 装在
- * 兄弟仓库，所以保留一条**兜底路径**，可用 `PLAYWRIGHT_PATH` 覆盖。
- * 写死路径会随机器变化而失效，这里把它降级成最后的选择。
- */
-function loadChromium() {
-  const candidates = [
-    process.env['PLAYWRIGHT_PATH'],
-    'playwright',
-    '/home/dynesshely/dsh-workspaces/tools/watermark-studio/node_modules/playwright',
-  ].filter(Boolean);
-  for (const candidate of candidates) {
-    try {
-      return require(candidate).chromium;
-    } catch {
-      /* 换下一个候选 */
-    }
-  }
-  throw new Error(
-    '找不到 playwright。请先安装（pnpm add -D playwright），或用 PLAYWRIGHT_PATH 指向已有的安装。',
-  );
-}
+import { fileURLToPath } from 'node:url';
+import { loadChromium } from './playwright.mjs';
 
 const chromium = loadChromium();
 
@@ -76,8 +49,17 @@ for (const [from, to] of COPIES) {
 }
 
 const markSvg = readFileSync(join(SRC, 'mark.svg'), 'utf8');
-const bleedSvg = markSvg.replace('rx="14"', 'rx="0"').replace('rx="13"', 'rx="0"');
-if (bleedSvg === markSvg) throw new Error('全出血变体替换失败：mark.svg 的圆角写法变了？');
+/*
+ * iOS 会自己给主屏图标套圆角遮罩，所以那一张要用**全出血**版本：
+ * 把六边形徽章换成铺满画布的方块（顺带去掉内侧亮边，否则方角上会露出一圈描边）。
+ * 形状变了要让这里失败得响亮，别悄悄生成一张四角透明的图标。
+ */
+const bleedSvg = markSvg
+  .replace(/<polygon id="ts-badge-shape"[^>]*\/>/, '<rect width="64" height="64" fill="url(#ts-badge)"/>')
+  .replace(/<polygon points="32,3.4[^>]*\/>/, '');
+if (bleedSvg === markSvg || bleedSvg.includes('ts-badge-shape')) {
+  throw new Error('全出血变体替换失败：mark.svg 的徽章形状写法变了（需要 id="ts-badge-shape" 的多边形）');
+}
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 600, height: 600 } });
