@@ -18,8 +18,8 @@
 <p align="center">
   <a href="https://github.com/Crequency/TopoSmith/actions/workflows/ci.yml"><img src="https://github.com/Crequency/TopoSmith/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/tests-45%20engine%20%C2%B7%20194%20web-brightgreen" alt="Tests">
-  <img src="https://img.shields.io/badge/build-461%20kB%20%C2%B7%20143%20kB%20gzip-blue" alt="Build size">
+  <img src="https://img.shields.io/badge/tests-45%20engine%20%C2%B7%20218%20web-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/build-478%20kB%20%C2%B7%20148%20kB%20gzip-blue" alt="Build size">
   <img src="https://img.shields.io/badge/TypeScript-strict-3178c6" alt="TypeScript strict">
   <img src="https://img.shields.io/badge/backend-none-8b5cf6" alt="No backend">
   <img src="https://img.shields.io/badge/status-M0-orange" alt="Status: M0">
@@ -52,6 +52,10 @@ TopoSmith 不是逐包网络仿真器，而是**确定性推演器**：从拓扑
 - **有背板端口的设备悬浮即半透明**，直接看到背面端口；设备自身也可翻面
 - 框选与 Ctrl/Shift 多选；六向对齐 + 两轴等距分布；网格与节点吸附（带引导线）
 - 撤销重做（含拖动事务合并）、导入导出、节点树（搜索 / 排序 / 双击定位）
+- **侧栏卡片布局**：标题栏可拖动排序、可拖到另一侧栏、可折叠；两侧侧栏宽度可拖
+  （`←/→` 微调、双击复位，宽度与顺序都记住）
+- **命令菜单** `Ctrl/Cmd+Shift+P`：按 VSCode 习惯的面板（搜索 / 分组 / 键盘导航）——
+  当前只有界面，命令尚未接入，界面上如实标注
 
 **推演与诊断（四类，全部带证据链）**
 - **可达性**：能不能通，不通卡在哪一跳、原因码是什么
@@ -93,7 +97,7 @@ pnpm install
 pnpm dev          # 开发服务器，默认 http://127.0.0.1:31006
 pnpm typecheck    # 全量类型检查（4 个包）
 pnpm test         # 引擎单元测试（45 项）
-pnpm test:web     # 前端单元测试（194 项）
+pnpm test:web     # 前端单元测试（218 项）
 pnpm build        # 构建静态产物到 apps/web/dist
 pnpm screenshot   # 重新生成 README 的界面截图
 pnpm brand        # 由 assets/brand 重新生成 favicon / PNG
@@ -137,7 +141,7 @@ toposmith/
 | 文档 | 内容 |
 |---|---|
 | [`docs/00-overview.md`](docs/00-overview.md) | 定位、核心判断（推演 ≠ 仿真）、非目标、术语 |
-| [`docs/01-requirements.md`](docs/01-requirements.md) | FR-01…FR-68 全量需求与逐条验收标准、NFR、已知不做 |
+| [`docs/01-requirements.md`](docs/01-requirements.md) | FR-01…FR-71 全量需求与逐条验收标准、NFR、已知不做 |
 | [`docs/02-domain-model.md`](docs/02-domain-model.md) | 领域模型、数据 Schema、不变量 |
 | [`docs/03-catalog.md`](docs/03-catalog.md) | 设备/端口/线缆目录与五条物理硬约束 |
 | [`docs/04-architecture.md`](docs/04-architecture.md) | 分层、包边界、渲染方案、状态管理 |
@@ -145,13 +149,13 @@ toposmith/
 | [`docs/06-addressing.md`](docs/06-addressing.md) | IP / 网段 / VLAN / DHCP / DNS 模型 |
 | [`docs/07-diagnostics.md`](docs/07-diagnostics.md) | 诊断输出契约、原因码表、证据链呈现规范 |
 | [`docs/08-roadmap.md`](docs/08-roadmap.md) | M0–M4 里程碑、逐轮实测数据与风险登记 |
-| [`docs/DECISIONS.md`](docs/DECISIONS.md) | 决策记录（D-01…D-51，含「为什么没选另一条路」与代价） |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | 决策记录（D-01…D-53，含「为什么没选另一条路」与代价） |
 
 ## 质量与验证
 
 - **引擎单测 45 项**覆盖链路协商、广播域、二层环路与聚合、路由、DHCP/DNS、四类诊断与原因码；
-- **前端单测 194 项**覆盖几何 / 端口布局 / 折线弧长 / 标签几何 / 摆动物理 / 适应视图 /
-  节点树 / store 行为，以及**七套预置场景的行为承诺**；
+- **前端单测 218 项**覆盖几何 / 端口布局 / 折线弧长 / 标签几何 / 摆动物理 / 适应视图 /
+  侧栏卡片布局 / 命令菜单 / 节点树 / store 行为，以及**七套预置场景的行为承诺**；
 - 端到端脚本用真实 Chromium 驱动，覆盖启动、四类诊断、多选与框选、对齐吸附、机柜与翻转、
   标签拖拽、悬浮透视、弹窗流程与**性能预算**（`.verify/` 下，属本机脚本、不入库）；
 - **规模压测**（中型 IDC 场景，810 台设备 / 809 条链路，实测）：
