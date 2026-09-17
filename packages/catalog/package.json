@@ -1,0 +1,16 @@
+{
+  "name": "@toposmith/catalog",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "TopoSmith 设备/端口/线缆/速率目录（纯数据 + 纯函数）",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@toposmith/schema": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

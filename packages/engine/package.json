@@ -1,0 +1,21 @@
+{
+  "name": "@toposmith/engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "TopoSmith 推演内核：链路协商、广播域、路由、DHCP、DNS 与四类诊断",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@toposmith/catalog": "workspace:*",
+    "@toposmith/schema": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  }
+}

@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.vite/
+*.local
+.DS_Store
+*.log
+*.tsbuildinfo
+.scratch/
+
+# 本机验证脚本与产物（临时；M1 起替换为带独立依赖的 Playwright 套件）
+.verify/
+
+# DevHub 登记用的中间文件（probe/register 的输入）
+.devhub-*.json
