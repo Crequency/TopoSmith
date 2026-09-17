@@ -668,8 +668,33 @@ function DeviceInspector({ device, world }: { device: Device; world: World }) {
 
   const isGateway = device.kind === 'ont' || device.kind === 'router';
 
+  // 这台设备所在广播域里的二层环路：风暴会波及整个域，不只是环上的设备
+  const affectedLoops = world.loops.filter((loop) => loop.affected.has(device.id));
+
   return (
     <div className="flex flex-col gap-3 p-3 text-xs">
+      {affectedLoops.length > 0 && (
+        <section className="flex flex-col gap-1 rounded border border-amber-700 bg-amber-500/10 p-2 text-[10px] leading-snug text-amber-200">
+          <div className="text-[11px] font-semibold">
+            所在广播域有 {affectedLoops.length} 处二层环路（VLAN{' '}
+            {[...new Set(affectedLoops.map((loop) => loop.vlan))].join('、')}）
+          </div>
+          <ul className="flex flex-col gap-0.5">
+            {affectedLoops.map((loop) => (
+              <li key={`${loop.vlan}-${loop.linkIds.join(',')}`} className="font-mono text-amber-100/90">
+                {loop.label}
+              </li>
+            ))}
+          </ul>
+          <div>
+            以太网帧没有 TTL：广播帧会沿环无限循环（广播风暴），环内最慢的一段{' '}
+            {formatSpeed(Math.min(...affectedLoops.map((loop) => loop.slowestMbps)))} 会先被打满，
+            该域内 {Math.max(...affectedLoops.map((loop) => loop.affected.size))} 台设备一起受影响。
+            修法：把并联的线缆做成「链路聚合」（选中其中一根线缆即可勾选），或拆掉多余的那一根。
+          </div>
+        </section>
+      )}
+
       {/* 基本信息 */}
       <Section title="基本信息">
         <Field label="名称">
@@ -1349,6 +1374,7 @@ function PortRow({
 
 function CableInspector({ linkId, world }: { linkId: string; world: World }) {
   const patchCable = useApp((s) => s.patchCable);
+  const setBonded = useApp((s) => s.setBonded);
   const link = world.links.find((l) => l.id === linkId);
   if (!link) return null;
 
@@ -1356,6 +1382,17 @@ function CableInspector({ linkId, world }: { linkId: string; world: World }) {
   const deviceB = world.devices.get(link.b.deviceId);
   const spec = cableSpec(link.cable.type);
   const ratio = clampLabelRatio(link.cable.labelRatio);
+
+  /*
+   * 同一对设备之间的所有线缆（聚合是"一对设备之间的组"，不是单根线的属性）。
+   * 只有 ≥2 根时聚合开关才有意义，也只有这时它才能把"双上行"从"环路"里救出来。
+   */
+  const siblings = world.links.filter((candidate) => {
+    const ends = [candidate.a.deviceId, candidate.b.deviceId].sort().join('→');
+    return ends === [link.a.deviceId, link.b.deviceId].sort().join('→');
+  });
+  const bondable = spec.family !== 'wireless' && siblings.length > 1;
+  const peerName = deviceB && deviceB.id !== deviceA?.id ? deviceB.name : `${deviceA?.name ?? ''} 自身`;
 
   const typeOptions = CABLE_SPECS.map((candidate) => ({
     value: candidate.type,
@@ -1394,6 +1431,33 @@ function CableInspector({ linkId, world }: { linkId: string; world: World }) {
         <div className="text-[10px] text-slate-500">
           标准：{spec.standard} · 长度上限 {spec.maxLengthM} m
           {spec.alias ? ` · 实际标准名为 ${spec.label}，「${spec.alias}」是市面俗称` : ''}
+        </div>
+      </Section>
+
+      <Section
+        title="链路聚合（LACP）"
+        hint="并联的两根线是「冗余带宽」还是「二层环路」，区别只在于做没做聚合"
+      >
+        <Checkbox
+          checked={Boolean(link.cable.bonded)}
+          disabled={!bondable}
+          onChange={(bonded) => setBonded(link.id, bonded)}
+          label={
+            bondable
+              ? `与${peerName}之间的 ${siblings.length} 根线做链路聚合`
+              : '同一对设备之间只有一根线，聚合没有意义'
+          }
+          title={
+            bondable
+              ? '勾上后这几根线在推演里算作一条逻辑链路：不再判成二层环路（真机上就是 LACP / 静态聚合）'
+              : '链路聚合至少要两根成员线缆'
+          }
+        />
+        <div className="text-[10px] leading-snug text-slate-500">
+          {bondable
+            ? '勾上之后：拓扑上视为「一条」链路，因此不再形成二层环路；' +
+              '速率仍按单根计算（带宽叠加不在 M0 范围内，见 D-50）。'
+            : '要把双上行变成"冗余带宽"而不是"环路"，就得有两根以上的线缆并标为聚合。'}
         </div>
       </Section>
 

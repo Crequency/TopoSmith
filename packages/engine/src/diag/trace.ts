@@ -22,6 +22,7 @@ import {
   linkedPortCount,
   traceDomainPath,
 } from '../l2/domain';
+import type { L2Loop } from '../l2/loop';
 import { describeRouteTable, lookupRoute, routingTable } from '../l3/routing';
 import { inSubnet, ipToString, isPrivateIp, parseIp } from '../ip';
 import { mkStep, type ReasonCode } from './reasons';
@@ -43,6 +44,63 @@ interface FailInit {
   deviceId?: string;
   portId?: string;
   data?: Record<string, unknown>;
+}
+
+/** 一台设备所在广播域里的环路（按 VLAN、链路 id 排序，结果确定） */
+function loopsAffecting(world: World, deviceId: string): L2Loop[] {
+  return world.loops
+    .filter((loop) => loop.affected.has(deviceId))
+    .sort((a, b) => (a.vlan === b.vlan ? a.linkIds[0].localeCompare(b.linkIds[0]) : a.vlan - b.vlan));
+}
+
+/**
+ * 二层环路的两步结论：**拓扑判定** + **风暴后果与披露**（FR-67 / D-51）。
+ *
+ * 为什么是两步而不是一步：用户需要分开看到"凭什么说成环了"（环路径，可核对）
+ * 与"成环会怎样"（风暴机制 + 本推演不建模什么）。少任何一步，
+ * 结论要么无法核对，要么会被误当成"真机模拟结果"。
+ */
+function loopSteps(loops: L2Loop[], deviceName: string): DiagStep[] {
+  if (loops.length === 0) return [];
+  const shown = loops.slice(0, 3);
+  const more = loops.length > shown.length ? `（另有 ${loops.length - shown.length} 处未展开）` : '';
+  const pathText = shown
+    .map((loop) => `${loop.label}（VLAN ${loop.vlan}，该域共 ${loop.affected.size} 台设备）`)
+    .join('；');
+  const slowest = Math.min(...loops.map((loop) => loop.slowestMbps));
+  const vlans = [...new Set(loops.map((loop) => loop.vlan))].sort((a, b) => a - b);
+
+  return [
+    mkStep(
+      'L2_LOOP',
+      'warn',
+      `拓扑上存在 ${loops.length} 处二层环路，都在「${deviceName}」所在广播域内：${pathText}${more}。` +
+        '环形路径上的每一段会同时承载同一份广播帧 —— 这是拓扑判定，与流量大小无关。',
+      {
+        data: {
+          loopCount: loops.length,
+          vlans,
+          slowestMbps: slowest,
+          loops: shown.map((loop) => ({
+            vlan: loop.vlan,
+            label: loop.label,
+            linkIds: loop.linkIds,
+            affectedDevices: loop.affected.size,
+          })),
+        },
+      },
+    ),
+    mkStep(
+      'BROADCAST_STORM',
+      'warn',
+      `后果是广播风暴：以太网帧没有 TTL，广播帧（ARP 请求、DHCP 发现、未知单播泛洪）会沿环无限循环，` +
+        `环内最慢的一段 ${formatSpeed(slowest)} 会先被打满，交换机的 MAC 地址表在环上两个口之间来回翻转（MAC flapping），` +
+        `VLAN ${vlans.join('、')} 里的每一台设备都会被拖慢直至中断 —— 风暴不只影响环上的设备。` +
+        '已知简化：本推演不建模风暴动力学（帧速率、队列、收敛时间），也不建模 STP / 链路聚合的端口状态机（D-14）；' +
+        '这里给的是"只要成环且没做聚合就按会成风暴算"的拓扑结论。真机上若环上设备启用了 STP，冗余口会被阻塞，网络可能仍然正常。',
+      { data: { vlans, slowestMbps: slowest } },
+    ),
+  ];
 }
 
 export function trace(
@@ -110,6 +168,17 @@ export function trace(
     }),
   );
 
+  // 源所在广播域有二层环路：先把它说清楚，再谈可达性 —— 否则"可达"这个结论会被当真
+  const announcedLoops = new Set<string>();
+  const loopKey = (loop: L2Loop): string => `${loop.vlan}|${loop.linkIds.join(',')}`;
+  const srcLoops = loopsAffecting(world, src.id);
+  steps.push(...loopSteps(srcLoops, src.name));
+  for (const loop of srcLoops) announcedLoops.add(loopKey(loop));
+  const loopWarning =
+    srcLoops.length > 0
+      ? `（注意：${src.name} 所在广播域有 ${srcLoops.length} 处二层环路，真机上会形成广播风暴）`
+      : '';
+
   // SNAT 之后，网络里"看到的源地址"就变了；据此避免在多台设备上重复判定 NAT
   let effectiveSrcValue = srcAddress.ipValue;
 
@@ -124,6 +193,13 @@ export function trace(
     // a. 到达本机？
     const localHit = addressesOf(world, current.id).find((a) => a.ipValue === dstValue);
     if (localHit) {
+      // 目的端那一侧才成环时，同样要说 —— 受害者是目的地所在的那个广播域
+      const dstLoops = loopsAffecting(world, current.id).filter(
+        (loop) => !announcedLoops.has(loopKey(loop)),
+      );
+      steps.push(...loopSteps(dstLoops, current.name));
+      for (const loop of dstLoops) announcedLoops.add(loopKey(loop));
+
       steps.push(
         mkStep('REACHED', 'ok', `${ipToString(dstValue)} 是 ${current.name} 的本机地址，报文送达。`, {
           deviceId: current.id,
@@ -141,7 +217,12 @@ export function trace(
       });
       return {
         ok: true,
-        summary: `${src.name} → ${ipToString(dstValue)} 可达，共经过 ${hops.length} 台设备。`,
+        summary:
+          `${src.name} → ${ipToString(dstValue)} 可达，共经过 ${hops.length} 台设备。` +
+          loopWarning +
+          (dstLoops.length > 0 && srcLoops.length === 0
+            ? `（注意：${current.name} 所在广播域有 ${dstLoops.length} 处二层环路，真机上会形成广播风暴）`
+            : ''),
         steps,
         hops,
         dstIpValue: dstValue,

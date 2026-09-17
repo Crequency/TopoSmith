@@ -26,7 +26,11 @@ function forwardPortsWithin(device: Device, inPort: Port, vlan: number): Port[] 
   }
   // 路由模式的家用网关：LAN 口与 WLAN 内部桥接在 VLAN 1
   if (bridgesLanPorts(device) && isLanSidePort(inPort) && vlan === LAN_BRIDGE_VLAN) {
-    return device.ports.filter((p) => p.id !== inPort.id && isLanSidePort(p));
+    // 桥内容量同样受 VLAN 约束：一个被划到别的 VLAN 的 LAN 口不在这座桥里
+    // （否则"路由器上分属两个 VLAN 的两个口"会被当成同一座桥，凭空造出环路，见 D-51）
+    return device.ports.filter(
+      (p) => p.id !== inPort.id && isLanSidePort(p) && portCarriesVlan(p, LAN_BRIDGE_VLAN),
+    );
   }
   return [];
 }

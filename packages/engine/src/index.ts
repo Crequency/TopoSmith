@@ -48,6 +48,8 @@ export {
   linkedPortCount,
 } from './l2/domain';
 export type { DomainEntry } from './l2/domain';
+export { MAX_REPORTED_LOOPS, detectL2Loops, scanL2Loops, stormSaturationText } from './l2/loop';
+export type { L2Loop, LoopPort, LoopScan } from './l2/loop';
 export { describeRouteTable, lookupRoute, routingTable } from './l3/routing';
 export type { RouteEntry, RouteKind } from './l3/routing';
 

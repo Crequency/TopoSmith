@@ -109,6 +109,8 @@ export function validateScenario(input: unknown): ValidationResult {
 
   // ── 线缆（不变量 1、3）
   const portUse = new Map<string, number>();
+  /** 聚合组成员数：`设备A→设备B`（id 排序）→ 勾了 bonded 的线缆数 */
+  const bondPairs = new Map<string, number>();
   cables.forEach((raw, i) => {
     if (!isObject(raw)) {
       errors.push(`cables[${i}] 不是对象。`);
@@ -152,7 +154,32 @@ export function validateScenario(input: unknown): ValidationResult {
         errors.push(`线缆 ${cid} 的 labelRatio 必须是 0–1 之间的数字。`);
       }
     }
+
+    // 链路聚合：组成员必须成对（一条链路谈不上"聚合"），且无线关联不能聚合
+    const bonded = raw['bonded'];
+    if (bonded !== undefined) {
+      if (typeof bonded !== 'boolean') {
+        errors.push(`线缆 ${cid} 的 bonded 必须是布尔值。`);
+      } else if (bonded) {
+        const type = raw['type'];
+        if (type === 'wireless') {
+          errors.push(`线缆 ${cid} 是无线关联，不能做链路聚合（聚合只对有线端口有意义）。`);
+        }
+        if (isObject(a) && isObject(b)) {
+          const ends = [String(a['deviceId']), String(b['deviceId'])].sort();
+          bondPairs.set(ends.join('→'), (bondPairs.get(ends.join('→')) ?? 0) + 1);
+        }
+      }
+    }
   });
+
+  // 每对设备上的聚合组至少要两根成员，否则是"孤零零勾了聚合"的坏数据
+  for (const [pair, count] of bondPairs) {
+    if (count >= 2) continue;
+    errors.push(
+      `链路聚合组 ${pair} 只有 ${count} 根成员线缆；聚合至少要两根（否则请去掉 bonded 标记）。`,
+    );
+  }
 
   // 不变量 1：一个端口最多一根线缆（D-11）；
   // **无线端口例外**：一个 radio 天然承载多条关联（手机、笔记本可以同时连同一个 AP）
