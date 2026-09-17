@@ -3,7 +3,7 @@
  *
  * 这里定义的是**用户能编辑的事实**：设备、端口、线缆、配置。
  * 派生产物（链路协商结果、地址分配、广播域、诊断结果）不在本文件里，
- * 它们由 @toposmith/engine 每次推演重算 —— 见 docs/02-domain-model.md §1。
+ * 它们由推演内核 Anvil（`@toposmith/anvil`）每次推演重算 —— 见 docs/02-domain-model.md §1。
  */
 
 import { SCHEMA_VERSION } from './version';

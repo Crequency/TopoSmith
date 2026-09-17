@@ -1,9 +1,9 @@
 {
-  "name": "@toposmith/engine",
+  "name": "@toposmith/anvil",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "TopoSmith 推演内核：链路协商、广播域、路由、DHCP、DNS 与四类诊断",
+  "description": "TopoSmith 推演内核 Anvil：链路协商、广播域、路由、DHCP、DNS、二层环路检测与四类诊断（纯 TS，零 DOM/React）",
   "exports": {
     ".": "./src/index.ts"
   },

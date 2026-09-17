@@ -1,6 +1,6 @@
 # 诊断输出契约与证据链
 
-> 版本：v0.1（M0） ｜ 权威定义在 `packages/engine/src/diag/`
+> 版本：v0.1（M0） ｜ 权威定义在 Anvil 的 `packages/engine/src/diag/`（`@toposmith/anvil`）
 
 ## 1. 统一输出契约
 

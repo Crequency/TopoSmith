@@ -72,6 +72,38 @@ TopoSmith 不是逐包网络仿真器，而是**确定性推演器**：从拓扑
 - 拖设备时**连线有平面物理摆动**（位移冲量 + 弹簧回零），快甩甩得远、松手回摆几下
 - 适应视图按真实画布尺寸把「设备 ∪ 连线」完整装入；缩放 5%–400%；低缩放自动分级绘制
 
+## 推演内核：Anvil
+
+界面之下是一个独立、确定性的推演内核 —— **Anvil**（铁砧）。名字就是它的工作方式：
+匠人的结论在铁砧上被**确定性地**敲出来 —— 同一份拓扑与配置，永远得到同一个结论。
+它**不是逐包仿真器**（见 [`docs/00-overview.md`](docs/00-overview.md) §2）：
+不发一个包、不跑设备镜像，而是用图算法与约束求解算出结论，并给出**证据链**。
+
+|  |  |
+|---|---|
+| 包名 | `@toposmith/anvil`（源码在 `packages/engine/`：名字给消费者看，目录名给贡献者看） |
+| 依赖方向 | `apps/web → @toposmith/anvil → @toposmith/catalog → @toposmith/schema`，**反向零依赖** |
+| 运行环境 | 纯 TypeScript：零 DOM、零 React、零浏览器 API；45 项单测直接在 Node 下跑 |
+| 确定性 | 引擎里没有随机数、没有时钟（DNS 的「当前时间」是参数传进来的） |
+| 负责的事 | 链路协商、广播域（VLAN）、路由与 NAT、DHCP 租约、DNS 解析链、二层环路检测、四类诊断 |
+| 不负责的事 | 像素、相机、事件、存储 —— 画布连"能不能连这条线"都要问它（`negotiateLink`） |
+
+因为它不认识界面，同样一份内核可以在 Node 里直接跑 —— 例如批量做一次可达性体检：
+
+```ts
+import { buildWorld, ping } from '@toposmith/anvil';
+
+const world = buildWorld(scenario);            // 纯数据进：派生世界（链路协商 / 地址 / 租约 / 环路）
+const result = ping(world, 'dev-pc', '203.0.113.10');
+
+result.ok;                                     // 能不能通
+result.steps.map((step) => step.code);         // ['SRC_ADDRESS', 'ROUTE_MATCH', 'ARP_OK', 'REACHED']
+result.steps.map((step) => step.detail);       // 每一步"为什么"（人话）
+```
+
+**边界如实说明**：结论文案（中文）目前由引擎生成 —— 换语言时需要把文案外置成
+key + 参数，或让报告同时给出原因码与结构化参数。`docs/DECISIONS.md` 的 D-54 记录了命名与这条边界。
+
 ## 预置场景
 
 工具栏「预置场景」打开选择弹窗，七套开箱可用、且**各自演示一类能力**的拓扑：
@@ -130,12 +162,13 @@ toposmith/
 ├─ packages/
 │  ├─ schema/           类型定义 + 导入校验（输入契约）
 │  ├─ catalog/          设备 / 端口 / 线缆 / 速率目录（纯数据）
-│  └─ engine/           推演内核（纯 TS，零 DOM/React，可在 Node 下直接测试）
+│  └─ engine/           推演内核 **Anvil**（`@toposmith/anvil`，纯 TS、零 DOM/React）
 └─ apps/web/            React 19 + Vite 8 + Tailwind 4 + zustand（样式全部内联类名）
 ```
 
-**依赖方向严格单向：`web → engine → catalog → schema`。** 引擎不认识 React、不认识画布，
-所以「为什么这条链路只有 2.5G」这类判断可以在 Node 下直接写单测（`packages/engine/src/__tests__`）。
+**依赖方向严格单向：`apps/web → @toposmith/anvil → @toposmith/catalog → @toposmith/schema`。**
+内核不认识 React、不认识画布，所以「为什么这条链路只有 2.5G」这类判断可以在 Node 下直接写单测
+（`packages/engine/src/__tests__`）—— 它也因此可以被别的消费方直接 `import`。
 
 ## 文档
 

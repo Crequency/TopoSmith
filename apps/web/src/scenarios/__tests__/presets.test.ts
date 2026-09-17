@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { validateScenario, type Scenario } from '@toposmith/schema';
-import { bandwidth, buildWorld, dnsPath, ping, type DiagResult, type World } from '@toposmith/engine';
+import { bandwidth, buildWorld, dnsPath, ping, type DiagResult, type World } from '@toposmith/anvil';
 import { PRESETS, presetByKey, presetSize } from '..';
 
 /** 某个原因码对应的步骤（断言"这一步报了什么"用） */

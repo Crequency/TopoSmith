@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@toposmith/catalog": "workspace:*",
-    "@toposmith/engine": "workspace:*",
+    "@toposmith/anvil": "workspace:*",
     "@toposmith/schema": "workspace:*",
     "lucide": "^1.46.0",
     "react": "^19.3.0",

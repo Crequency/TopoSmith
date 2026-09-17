@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import { instantiate } from '@toposmith/catalog';
 import { SCHEMA_VERSION, type Scenario } from '@toposmith/schema';
-import { buildWorld } from '@toposmith/engine';
+import { buildWorld } from '@toposmith/anvil';
 import { rackMountPosition } from '../../lib/geometry';
 import { hitDevice } from '../draw';
 

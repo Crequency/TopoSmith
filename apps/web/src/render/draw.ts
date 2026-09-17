@@ -14,7 +14,7 @@
 import type { Device, DeviceKind, Port, PortMedium } from '@toposmith/schema';
 import { DEVICE_KIND_LABEL, DEVICE_SUBTYPE_LABEL } from '@toposmith/schema';
 import { cableLabel, cableSpec, formatSpeed } from '@toposmith/catalog';
-import type { DerivedLink, World } from '@toposmith/engine';
+import type { DerivedLink, World } from '@toposmith/anvil';
 import { deviceIcon, strokeIcon, uiIcon } from '../lib/icons';
 import {
   DEFAULT_RACK_UNITS,

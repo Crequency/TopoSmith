@@ -12,7 +12,7 @@
  * 再把内容**居中**。于是"完整装进可视区域"与"不留过多空白"同时成立。
  */
 
-import type { World } from '@toposmith/engine';
+import type { World } from '@toposmith/anvil';
 import { boxesBounds, hitRect, type Box } from './geometry';
 import { linkPath } from './link-path';
 import { boundsOfPoints } from './polyline';

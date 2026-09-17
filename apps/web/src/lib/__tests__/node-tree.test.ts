@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { SCHEMA_VERSION, type Scenario } from '@toposmith/schema';
 import { instantiate } from '@toposmith/catalog';
-import { buildWorld, type World } from '@toposmith/engine';
+import { buildWorld, type World } from '@toposmith/anvil';
 import {
   buildNodeRows,
   filterNodeRows,

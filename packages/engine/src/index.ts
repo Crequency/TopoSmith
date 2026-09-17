@@ -1,5 +1,5 @@
 /**
- * @toposmith/engine — 推演内核
+ * @toposmith/anvil — 推演内核
  *
  * 纯 TypeScript，零 DOM / 零 React 依赖，可在 Node 下直接测试。
  * 依赖方向：web → engine → catalog → schema（docs/04-architecture.md §1）。

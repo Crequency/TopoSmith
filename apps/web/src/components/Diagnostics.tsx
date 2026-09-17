@@ -1,7 +1,7 @@
 /** 诊断面板：四类诊断的入口与证据链呈现 */
 
 import { useMemo } from 'react';
-import { addressesOf, type DiagResult, type DiagStep } from '@toposmith/engine';
+import { addressesOf, type DiagResult, type DiagStep } from '@toposmith/anvil';
 import { formatMbpsAsBytesPerSecond, formatSpeed } from '@toposmith/catalog';
 import { useApp } from '../state/store';
 import { Button, Field, TextInput } from './ui';

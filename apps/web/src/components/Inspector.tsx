@@ -27,7 +27,7 @@ import {
   type WifiBand,
   type WifiStandard,
 } from '@toposmith/schema';
-import { firstLinkOfPort, type World } from '@toposmith/engine';
+import { firstLinkOfPort, type World } from '@toposmith/anvil';
 import {
   MAX_CARD_W,
   MAX_RACK_HEIGHT_U,
