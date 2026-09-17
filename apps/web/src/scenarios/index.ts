@@ -14,6 +14,7 @@ import { buildDatacenterScenario } from './datacenter';
 import { buildFtthScenario } from './ftth';
 import { buildCampusScenario } from './campus';
 import { buildIdcScenario } from './idc';
+import { buildLoopScenario } from './loop';
 
 export { buildEmptyScenario, buildHomeScenario } from './home';
 
@@ -77,10 +78,21 @@ export const PRESETS: PresetMeta[] = [
     key: 'idc',
     name: '中型托管 IDC',
     summary:
-      '三个机房各 24 个 42U 机柜（柜内 1 台 ToR + 9 台 4U 服务器），双千兆上联到机房汇聚，' +
+      '三个机房各 24 个 42U 机柜（柜内 1 台 ToR + 9 台 4U 服务器），双千兆 LACP 聚合上联到机房汇聚，' +
       '汇聚万兆到核心交换机对，出口路由器万兆出网；另有一个管理办公室。',
     highlights: ['3 机房 × 24 柜', '约 800 台设备', '满配机柜', '规模压测场景'],
     build: buildIdcScenario,
+  },
+  {
+    key: 'loop',
+    name: '网络环路与广播风暴',
+    summary:
+      '办公段有三处二层环路：一楼↔二楼两根「冗余」网线没做聚合、二楼交换机上一根跳线两端插在自己身上、' +
+      '二楼 AP 既接网线又做无线中继。它们都在 VLAN 1，服务器段（VLAN 20）是棵树、完全不受影响。',
+    highlights: ['二层环路检测', '广播风暴结论', '无线也参与环路', '风暴不跨 VLAN（对照组）'],
+    pitfall:
+      '三处环都能修：拆掉冗余两根里的一根（或把两根都勾成链路聚合）、拔掉 GE7–GE8 那根自环跳线、撤掉二楼 AP 的无线中继 —— 修完环路归零。',
+    build: buildLoopScenario,
   },
 ];
 

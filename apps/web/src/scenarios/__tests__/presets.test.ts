@@ -12,6 +12,11 @@ import { validateScenario, type Scenario } from '@toposmith/schema';
 import { bandwidth, buildWorld, dnsPath, ping, type DiagResult, type World } from '@toposmith/engine';
 import { PRESETS, presetByKey, presetSize } from '..';
 
+/** 某个原因码对应的步骤（断言"这一步报了什么"用） */
+function stepsOf(result: DiagResult, code: string) {
+  return result.steps.filter((step) => step.code === code);
+}
+
 /** 失败原因码集合（分布在 steps 的 detail/data 里，这里按 code 收集） */
 function reasonCodes(result: DiagResult): string[] {
   const codes: string[] = [];
@@ -323,5 +328,148 @@ describe('中型托管 IDC 场景（规模压测）', () => {
     // 构建 < 200ms、建世界 < 800ms：超出说明规模已经撑不住，得先优化再加大
     expect(t1 - t0).toBeLessThan(200);
     expect(t2 - t1).toBeLessThan(800);
+  });
+
+  it('双上行是 LACP 聚合（bonded），所以这座 800 台设备的 IDC 里**一处环路都没有**', () => {
+    const world = buildWorld(build());
+    const bonded = world.links.filter((link) => link.cable.bonded);
+    // 24 柜 × 3 机房 × 2 根上联
+    expect(bonded).toHaveLength(24 * 3 * 2);
+    expect(world.loops).toHaveLength(0);
+    expect(world.loopLinkIds.size).toBe(0);
+    // 环路告警不会被误挂到任何一条链路上
+    expect(world.links.some((link) => link.issues.some((i) => i.code === 'L2_LOOP'))).toBe(false);
+  });
+});
+
+describe('网络环路与广播风暴场景', () => {
+  const world = () => buildWorld(presetByKey('loop')!.build());
+
+  it('三处环都在办公段（VLAN 1），互不相同且路径闭合可核对', () => {
+    const w = world();
+    expect(w.loops).toHaveLength(3);
+    expect(w.loops.every((loop) => loop.vlan === 1)).toBe(true);
+    // 三条环路径：双上行冗余 / 自环跳线 / 无线中继
+    const labels = w.loops.map((loop) => loop.label);
+    expect(labels.some((label) => label.includes('GE23') && label.includes('GE24'))).toBe(true);
+    expect(labels.some((label) => label.includes('GE7') && label.includes('GE8'))).toBe(true);
+    expect(labels.some((label) => label.includes('WLAN'))).toBe(true);
+    for (const loop of w.loops) {
+      expect(loop.hasWireless).toBe(loop.label.includes('WLAN'));
+      // 路径首尾是同一个端口（闭合），用户才能顺着核对
+      const first = loop.label.split(' → ')[0];
+      expect(loop.label.endsWith(first)).toBe(true);
+    }
+    expect(w.loops.some((loop) => loop.hasWireless)).toBe(true);
+  });
+
+  it('环上的线缆都挂上 L2_LOOP 告警，并给出环路径与风暴后果', () => {
+    const w = world();
+    expect([...w.loopLinkIds].sort()).toEqual([
+      'cbl-a-ap1',
+      'cbl-b-ap2',
+      'cbl-redundant-1',
+      'cbl-redundant-2',
+      'cbl-self-loop',
+      'cbl-wifi-relay',
+    ]);
+    const selfLoop = w.links.find((link) => link.id === 'cbl-self-loop')!;
+    const issue = selfLoop.issues.find((item) => item.code === 'L2_LOOP')!;
+    expect(issue.level).toBe('warn');
+    expect(issue.text).toContain('GE7');
+    expect(issue.text).toContain('广播');
+    // 链路本身还是 up 的：环路是拓扑问题，不是"这根线坏了"
+    expect(selfLoop.up).toBe(true);
+  });
+
+  it('办公段被风暴波及（12 台设备），服务器段完全不受影响 —— 风暴不跨 VLAN', () => {
+    const w = world();
+    expect(w.loops[0].affected.size).toBe(12);
+    // VLAN 1：办公 PC ping 服务器，可达但要先报环路 + 风暴
+    const fromOffice = ping(w, 'dev-pc1', '192.168.20.10');
+    expect(fromOffice.ok).toBe(true);
+    const codes = reasonCodes(fromOffice);
+    expect(codes).toContain('L2_LOOP');
+    expect(codes).toContain('BROADCAST_STORM');
+    expect(fromOffice.summary).toContain('环路');
+    // VLAN 20：两台服务器之间通信，链路上没有环路，诊断里一个字都不该提
+    const inServerVlan = ping(w, 'dev-srv', '192.168.20.11');
+    expect(inServerVlan.ok).toBe(true);
+    expect(reasonCodes(inServerVlan)).not.toContain('L2_LOOP');
+    expect(inServerVlan.summary).not.toContain('环路');
+    // 目的端在环域内时（服务器 → 打印机）同样会报出来
+    expect(reasonCodes(ping(w, 'dev-srv', '192.168.10.11'))).toContain('L2_LOOP');
+  });
+
+  it('带宽诊断会说明"这两个数字在没有风暴的前提下才成立"', () => {
+    const w = world();
+    const result = bandwidth(w, 'dev-pc1', '192.168.20.10');
+    expect(result.ok).toBe(true);
+    expect(result.summary).toContain('环路');
+    expect(stepsOf(result, 'BROADCAST_STORM').length).toBeGreaterThan(0);
+  });
+
+  it('三处环都能修好：聚合冗余线 / 拔掉自环跳线 / 撤掉无线中继', () => {
+    // ① 把两根"冗余"线标成链路聚合 → 少一处环（这一处的修法是"聚合"而不是"拔线"）
+    const bonded = presetByKey('loop')!.build();
+    bonded.cables = bonded.cables.map((cable) =>
+      cable.id === 'cbl-redundant-1' || cable.id === 'cbl-redundant-2'
+        ? { ...cable, bonded: true }
+        : cable,
+    );
+    const afterBond = buildWorld(bonded);
+    // 双上行聚合成一条逻辑链路之后，它自己不再成环（原来那处环消失）
+    expect(afterBond.loops).toHaveLength(2);
+    // 剩下的两处环各自还带着"另外那两处错"：自环跳线与无线中继
+    const remaining = afterBond.loops.map((loop) => loop.linkIds.join(','));
+    expect(remaining.some((ids) => ids.includes('cbl-self-loop'))).toBe(true);
+    expect(remaining.some((ids) => ids.includes('cbl-wifi-relay'))).toBe(true);
+    for (const loop of afterBond.loops) {
+      expect(
+        loop.linkIds.some((id) => id === 'cbl-self-loop' || id === 'cbl-wifi-relay'),
+      ).toBe(true);
+    }
+
+    // ② 三处一起修（拆掉冗余两根里的一根、拔掉自环跳线、撤掉无线中继）→ 环路归零
+    const fixed = presetByKey('loop')!.build();
+    fixed.cables = fixed.cables.filter(
+      (cable) =>
+        cable.id !== 'cbl-self-loop' &&
+        cable.id !== 'cbl-wifi-relay' &&
+        cable.id !== 'cbl-redundant-2',
+    );
+    const afterFix = buildWorld(fixed);
+    expect(afterFix.loops).toHaveLength(0);
+    expect(afterFix.loopLinkIds.size).toBe(0);
+    // 修完之后办公段与服务器段都还是通的（不是靠"拔网线拔到断网"消除的告警）
+    expect(ping(afterFix, 'dev-pc1', '192.168.20.10').ok).toBe(true);
+    expect(ping(afterFix, 'dev-pc2', '192.168.10.11').ok).toBe(true);
+  });
+
+  it('场景本身通过导入校验（聚合标记的成员数、VLAN 一致性都在校验范围内）', () => {
+    const result = validateScenario(presetByKey('loop')!.build());
+    if (!result.ok) throw new Error(result.errors.join('；'));
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe('链路聚合数据的导入校验', () => {
+  it('孤零零一根成员线缆勾了聚合 → 校验失败并说明原因', () => {
+    const scenario = presetByKey('home')!.build();
+    scenario.cables[0] = { ...scenario.cables[0], bonded: true };
+    const result = validateScenario(scenario);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.join(' ')).toContain('聚合');
+  });
+
+  it('无线关联不能做链路聚合', () => {
+    const scenario = presetByKey('home')!.build();
+    const wifi = scenario.cables.findIndex((cable) => cable.type === 'wireless');
+    scenario.cables[wifi] = { ...scenario.cables[wifi], bonded: true };
+    const result = validateScenario(scenario);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.join(' ')).toContain('无线');
   });
 });

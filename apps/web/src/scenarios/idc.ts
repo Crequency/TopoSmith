@@ -9,7 +9,9 @@
  * 机柜内部（42U 里占 40U）：
  *   U1–4    ToR 接入交换机（24×1G + 2×10G SFP+）
  *   U5–40   9 台 4U 服务器，每台 1 根 CAT6a 到 ToR 的 GE1–GE9（千兆管理网）
- * 机柜上联：ToR 的 GE10/GE11 **双千兆**上联到本机房汇聚（每台汇聚正好接满 12 个机柜的 24 个口）
+ * 机柜上联：ToR 的 GE10/GE11 **双千兆**上联到本机房汇聚（每台汇聚正好接满 12 个机柜的 24 个口）。
+ *          这两根线在数据里标了 `bonded` —— 它们是**一条 LACP 聚合**，不是"插了两根线的环路"；
+ *          没有这个标记，整座 IDC 会被判出 24 处二层环路（FR-66 / D-50）。
  *
  * 分层：机柜 ToR →（双千兆）→ 机房汇聚 1/2 →（万兆 DAC）→ 核心交换机对 →（万兆）→ 出口路由器 → 桥接光猫 → OLT → 云
  *
@@ -63,9 +65,10 @@ export function buildIdcScenario(): Scenario {
     lengthM: number,
     a: { deviceId: string; portId: string },
     b: { deviceId: string; portId: string },
+    bonded = false,
   ): void => {
     cableSeq += 1;
-    cables.push({ id: `cbl-idc-${cableSeq}`, type, lengthM, a, b });
+    cables.push({ id: `cbl-idc-${cableSeq}`, type, lengthM, a, b, ...(bonded ? { bonded } : {}) });
   };
 
   /* ── 出口侧：云 → OLT → 桥接光猫 → 出口路由器 ── */
@@ -202,10 +205,12 @@ export function buildIdcScenario(): Scenario {
       }
 
       // 双千兆上联：前 12 柜 → 汇聚 1，后 12 柜 → 汇聚 2（每台汇聚正好接满 24 口）
+      // 同一对设备之间的两根线是**一条 LACP 聚合**（`bonded`）：真机上这是带宽叠加的冗余上行；
+      // 不标聚合的话，它就是 24 处二层环路 + 广播风暴（FR-66 / D-50）
       const agg = n <= RACKS_PER_ROW ? agg1 : agg2;
       const aggPortBase = ((n - 1) % RACKS_PER_ROW) * 2 + 1;
-      link('cat6a', 20, { deviceId: tor.id, portId: 'port-ge10' }, { deviceId: agg.id, portId: `port-ge${aggPortBase}` });
-      link('cat6a', 20, { deviceId: tor.id, portId: 'port-ge11' }, { deviceId: agg.id, portId: `port-ge${aggPortBase + 1}` });
+      link('cat6a', 20, { deviceId: tor.id, portId: 'port-ge10' }, { deviceId: agg.id, portId: `port-ge${aggPortBase}` }, true);
+      link('cat6a', 20, { deviceId: tor.id, portId: 'port-ge11' }, { deviceId: agg.id, portId: `port-ge${aggPortBase + 1}` }, true);
     }
   });
 
@@ -243,7 +248,7 @@ export function buildIdcScenario(): Scenario {
     name: '中型托管 IDC（3 机房 × 24 柜）',
     description:
       '三个机房各 24 个 42U 机柜，柜内 1 台 ToR + 9 台 4U 服务器（占 40U），' +
-      'ToR 双千兆上联到机房汇聚，汇聚经万兆到核心交换机对，再由出口路由器（万兆）出网；' +
+      'ToR 用双千兆 LACP 聚合上联到机房汇聚，汇聚经万兆到核心交换机对，再由出口路由器（万兆）出网；' +
       '另有 1 个管理办公室。**这是规模压测场景**：约 800 台设备、800 条链路 —— ' +
       '画布、节点树与推演都按这个量级验收。',
     devices,
