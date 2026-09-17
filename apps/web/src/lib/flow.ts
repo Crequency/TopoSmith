@@ -9,7 +9,7 @@
  *  3. 动画只在 UI 层存在：不参与推演，不影响任何结论。
  */
 
-import type { Hop } from '@toposmith/engine';
+import type { Hop } from '@toposmith/anvil';
 
 export interface FlowPoint {
   x: number;

@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { instantiate } from '@toposmith/catalog';
 import { MAX_LABEL_RATIO, SCHEMA_VERSION, type Scenario } from '@toposmith/schema';
-import { buildWorld } from '@toposmith/engine';
+import { buildWorld } from '@toposmith/anvil';
 import { NODE_H, NODE_W } from '../../lib/geometry';
 import { portGlyphOf } from '../../lib/ports';
 import { nearestRatio } from '../../lib/polyline';

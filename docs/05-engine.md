@@ -1,6 +1,6 @@
 # 推演内核设计（Engine）
 
-> 版本：v0.1（M0） ｜ 权威实现在 `packages/engine/src/`
+> 版本：v0.1（M0） ｜ 推演内核 Anvil（包名 `@toposmith/anvil`，源码在 `packages/engine/src/`）
 > 本文档说明算法与**为什么这样设计**，而不是逐行复述代码。
 
 ## 0. 一次推演的全过程

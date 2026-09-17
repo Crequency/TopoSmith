@@ -6,7 +6,7 @@
  * 都能用它，而不必让状态层反过来依赖渲染层。
  */
 
-import type { DerivedLink, World } from '@toposmith/engine';
+import type { DerivedLink, World } from '@toposmith/anvil';
 import { clampLabelRatio, DEFAULT_LABEL_RATIO } from '@toposmith/schema';
 import { NODE_H, NODE_W, cardHeightOf, cardWidthOf, type CardSized, type Point } from './geometry';
 import { portGlyphOf } from './ports';

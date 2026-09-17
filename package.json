@@ -13,7 +13,7 @@
     "build": "pnpm --filter @toposmith/web build",
     "preview": "pnpm --filter @toposmith/web preview",
     "typecheck": "pnpm -r --sequential typecheck",
-    "test": "pnpm --filter @toposmith/engine test",
+    "test": "pnpm --filter @toposmith/anvil test",
     "test:web": "pnpm --filter @toposmith/web test",
     "check": "pnpm typecheck && pnpm test && pnpm test:web",
     "brand": "node scripts/build-brand.mjs",

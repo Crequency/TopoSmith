@@ -28,7 +28,7 @@ import {
   type DiagResult,
   type DnsSessionCache,
   type World,
-} from '@toposmith/engine';
+} from '@toposmith/anvil';
 import {
   LAYOUT_STORAGE_KEY,
   LEGACY_SPLIT_KEY,

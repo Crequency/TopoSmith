@@ -1,7 +1,7 @@
 /** 链路流向动画模型单测：路径构建 / 速度映射 / 推进与阻断 */
 
 import { describe, expect, it } from 'vitest';
-import type { Hop } from '@toposmith/engine';
+import type { Hop } from '@toposmith/anvil';
 import {
   advanceDistance,
   buildFlowPath,

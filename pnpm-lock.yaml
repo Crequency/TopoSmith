@@ -14,12 +14,12 @@ importers:
 
   apps/web:
     dependencies:
+      '@toposmith/anvil':
+        specifier: workspace:*
+        version: link:../../packages/engine
       '@toposmith/catalog':
         specifier: workspace:*
         version: link:../../packages/catalog
-      '@toposmith/engine':
-        specifier: workspace:*
-        version: link:../../packages/engine
       '@toposmith/schema':
         specifier: workspace:*
         version: link:../../packages/schema

@@ -14,7 +14,7 @@ import {
   type DeviceKind,
   type DeviceSubtype,
 } from '@toposmith/schema';
-import { addressesOf, parseIp, type World } from '@toposmith/engine';
+import { addressesOf, parseIp, type World } from '@toposmith/anvil';
 import { rackUnitsOf } from './geometry';
 
 export interface NodeRow {

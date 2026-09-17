@@ -8,7 +8,8 @@
 ┌──────────────────────────────────────────────────────────┐
 │ apps/web        画布交互 / 面板 / 诊断 UI（React + Tailwind）│
 ├──────────────────────────────────────────────────────────┤
-│ packages/engine 推演内核（纯 TS，零 DOM / 零 React 依赖）    │
+│ packages/engine 推演内核 **Anvil**（`@toposmith/anvil`）    │
+│                 纯 TS，零 DOM / 零 React 依赖               │
 │   ├ l2/         广播域、VLAN、ARP 解析                      │
 │   ├ l3/         路由表、最长前缀匹配、NAT 判定               │
 │   └ diag/       四类诊断编排 + 证据链 + 原因码               │
@@ -19,7 +20,7 @@
 └──────────────────────────────────────────────────────────┘
 ```
 
-**依赖方向严格单向**：`web → engine → catalog → schema`。
+**依赖方向严格单向**：`apps/web → @toposmith/anvil（engine）→ @toposmith/catalog → @toposmith/schema`。
 引擎不认识 React，也不认识 Canvas——它只吃 `Scenario`、吐 `DiagResult`。
 这条纪律换来三件东西：NFR-08（可在 Node 下测）、NFR-03（确定性可回归）、
 以及将来把引擎搬到 Worker 或后端时的零改动。
@@ -27,7 +28,7 @@
 ## 2. 为什么是这几个包（以及为什么不是更多）
 
 上一版规划里 `l2` / `l3` / `dns` / `wireless` / `diag` 各是一个独立包，
-M0 落地时**合并进 `engine` 的子目录**。理由是具体的：
+M0 落地时**合并进 `engine`（包名 `@toposmith/anvil`）的子目录**。理由是具体的：
 
 - 它们**共享同一个 `World` 类型**，且互相调用（诊断要同时用 l2 和 l3）。
   拆成独立包只会带来循环依赖或一个额外的 `types` 包，收益为零。
@@ -76,7 +77,7 @@ catalog 是纯数据（可被文档生成、采购清单等复用），schema �
 
 画布**不做任何网络语义判断**。连线时它只做两件事：
 
-1. 把两端 `{deviceId, portId}` 交给 `engine.negotiateLink` 试探；
+1. 把两端 `{deviceId, portId}` 交给 `anvil.negotiateLink` 试探；
 2. 若返回 `issues` 含 `error` 级 → 拒绝创建并弹出原因；否则创建线缆，由引擎重算链路。
 
 于是"为什么不让我连"和"为什么这条链路只有 2.5G"用的是**同一套判定逻辑**，
@@ -96,7 +97,7 @@ toposmith/
 │  │   ├─ cables.ts          线缆规格 + 速率分档 + 有效速率计算
 │  │   ├─ ports.ts           端口工厂 + portCarriesVlan
 │  │   └─ devices.ts         设备模板（含默认端口与服务）
-│  └─ engine/src/
+│  └─ engine/src/           推演内核 Anvil（包名 @toposmith/anvil）
 │      ├─ ip.ts              IPv4 解析/掩码/同网段/最长前缀
 │      ├─ model.ts           buildWorld + negotiateLink + 派生链路
 │      ├─ l2/domain.ts       VLAN 感知广播域 BFS + ARP 解析
