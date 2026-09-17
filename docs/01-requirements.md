@@ -578,6 +578,21 @@ README 顶部按主题展示字标，并提供一张 **1920×1080 的界面截�
 该场景的机柜从 24U 改为 **12U**：柜内只有交换机 4U + 服务器 4U，24U 机柜有一半是空柜，
 既不符合小型办公的真实采购，也让画面中心被空柜框占满。改完预置场景测试仍全绿。
 
+### FR-63 CI 与 GitHub Pages 部署（含子路径基路径）[M0]
+仓库带一条 GitHub Actions 流程（英文，`.github/workflows/ci.yml`）：
+`verify` 任务跑 `typecheck` + 引擎单测 + 前端单测 + 生产构建（push 到 main 与 PR 都跑）；
+`deploy` 任务只在 main 上、且 `verify` 通过后执行，用 `actions/configure-pages` 给出的
+`base_path` 作为 `BASE_PATH` 构建，再经 `upload-pages-artifact` + `deploy-pages` 发布。
+构建基路径由 `base`（`apps/web/vite.config.ts`）承担：`index.html` 用 Vite 的 `%BASE_URL%`，
+组件里用 `import.meta.env.BASE_URL` —— **不允许写绝对路径** `/xxx`，那正是白屏与图标 404 的来源。
+**验收**：
+- 默认 `pnpm build`（无 `BASE_PATH`）产出仍以 `/` 为基路径；
+- `BASE_PATH=/TopoSmith/ pnpm build` 后，产物中 **script / link / favicon / manifest 全部带前缀**；
+- 用请求拦截把 `apps/web/dist` 挂在 `https://pages.test/TopoSmith/` 下打开：
+  画布正常渲染、页眉标识加载成功、无 404、无控制台错误（端到端，`.verify/pages-base.mjs`）；
+- 流程 YAML 可解析；`deploy` 任务权限为 `pages: write` + `id-token: write`，
+  且 `needs: verify`、`if` 排除 PR（避免 PR 触发部署）。
+
 ---
 
 ## 6. 非功能需求（NFR）

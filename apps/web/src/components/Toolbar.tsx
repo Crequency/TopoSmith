@@ -61,7 +61,14 @@ export function Toolbar() {
     <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-800 bg-slate-900 px-3 py-2">
       <div className="flex items-center gap-2">
         {/* 品牌标识：与 favicon 同一份矢量来源（apps/web/public/favicon.svg），保证"页面里的 logo"和"标签栏里的 logo"是一个东西 */}
-        <img src="/favicon.svg" alt="TopoSmith" width={20} height={20} className="shrink-0" />
+        {/* 用 BASE_URL 而不是绝对路径：GitHub Pages 项目站点是子路径（见 vite.config.ts） */}
+        <img
+          src={`${import.meta.env.BASE_URL}favicon.svg`}
+          alt="TopoSmith"
+          width={20}
+          height={20}
+          className="shrink-0"
+        />
         <span className="text-sm font-bold tracking-tight text-slate-100">TopoSmith</span>
         <span className="self-baseline text-[11px] text-slate-500">拓扑匠</span>
         <span className="ml-2 rounded bg-slate-800 px-2 py-0.5 text-[11px] text-slate-300">

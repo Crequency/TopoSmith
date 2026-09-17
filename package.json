@@ -5,6 +5,9 @@
   "type": "module",
   "description": "TopoSmith — 浏览器内的网络拓扑绘制与连通性推演器",
   "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "pnpm --filter @toposmith/web dev",
     "build": "pnpm --filter @toposmith/web build",
@@ -12,6 +15,7 @@
     "typecheck": "pnpm -r --sequential typecheck",
     "test": "pnpm --filter @toposmith/engine test",
     "test:web": "pnpm --filter @toposmith/web test",
+    "check": "pnpm typecheck && pnpm test && pnpm test:web",
     "brand": "node scripts/build-brand.mjs",
     "screenshot": "node scripts/screenshot.mjs"
   },

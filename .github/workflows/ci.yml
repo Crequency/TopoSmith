@@ -1,0 +1,106 @@
+name: CI
+
+# Runs on every push to main and on every pull request.
+# `workflow_dispatch` allows a manual re-run (useful to re-deploy after a settings change).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege by default; the deploy job asks for more explicitly.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify (typecheck · unit tests · build)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Reads the pinned version from `packageManager` in package.json.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (schema · catalog · engine · web)
+        run: pnpm typecheck
+
+      - name: Engine unit tests
+        run: pnpm test
+
+      - name: Web unit tests
+        run: pnpm test:web
+
+      # A production build is part of the contract: it must not break.
+      - name: Build
+        run: pnpm build
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: verify
+    # Only deploy from main (never from a pull request), and only for real pushes.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Provides `base_path` (e.g. "/TopoSmith" for a project site, "" for a user site)
+      # and enables Pages on the first run if it is not enabled yet.
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      # Project sites are served from a sub-path, so every asset URL (and the favicon)
+      # needs that prefix — BASE_PATH feeds `base` in apps/web/vite.config.ts.
+      - name: Build for the Pages sub-path
+        env:
+          BASE_PATH: ${{ steps.pages.outputs.base_path }}/
+        run: |
+          echo "Building with BASE_PATH=$BASE_PATH"
+          pnpm build
+
+      - name: Upload the static site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/web/dist
+
+      - name: Deploy
+        id: deploy
+        uses: actions/deploy-pages@v4
