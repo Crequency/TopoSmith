@@ -171,6 +171,15 @@
 | CI 流程（英文） | `.github/workflows/ci.yml`：`verify`（typecheck + 引擎/前端单测 + 生产构建）与 `deploy`（`needs: verify`、仅 main、`id-token`/`pages` 最小权限、`enablement` 首次自动开通 Pages） | YAML 可解析；两个 job 权限与依赖关系核对通过；`pnpm install --frozen-lockfile` 与全部步骤在本机等价命令下通过 |
 | GitHub Pages 部署（FR-63 / D-47） | `base` 由 `BASE_PATH` 注入（CI 取 `configure-pages` 的 `base_path`）；`index.html` 的 5 个链接改用 `%BASE_URL%`；页眉硬编码的 `/favicon.svg` 改用 `import.meta.env.BASE_URL` | `BASE_PATH=/TopoSmith/ pnpm build` 后产物中 script/link/favicon/manifest **全部带前缀**；用请求拦截把 dist 挂在 `https://pages.test/TopoSmith/` 下打开：画布正常、页眉标识加载成功、**无 404 与控制台错误** |
 
+### M0 第十七轮迭代（用户反馈驱动，2026-09-17）
+
+| 需求 | 交付 | 实测 |
+|---|---|---|
+| 品牌区做成大号按钮 + 关于弹窗（FR-64） | 顶栏左侧品牌改为按钮（标识 + 名称 + 副标题），点击打开「关于」：定位、版本、许可、源码、在线试用、"数据只在本地"、技术栈；场景名留在按钮外 | 品牌按钮高 **47px**（普通按钮 30px）；弹窗可见、版本 `0.1.0（M0）`、含仓库与在线站点链接、Esc 可关 |
+| 顶栏右侧 GitHub 入口（FR-64） | 最右侧 32×32 图标按钮，链接取自 git 远端；Lucide 1.46 已无品牌图标，故用官方 octicon 路径自建**填充式**标识组件 | 距右边缘 12px、`href=https://github.com/Crequency/TopoSmith`、`target=_blank`、octocat 路径 712 字符（真画出来了） |
+| "连线"按钮强制单行（FR-64） | `Button` 组件统一加 `whitespace-nowrap`（问题出在共用组件上，就修在共用组件里） | 1280px 窄窗口（工具栏换行状态）下"连线"与"选择起点端口…"都是单行、高 30px |
+| 版本号同源（FR-65） | 构建期 `define: __APP_VERSION__`，取自仓库根 package.json；用 JSON import 读取，不引入 `@types/node` | 关于弹窗显示 0.1.0 与 package.json 一致 |
+
 **M0 完成定义（DoD）**：在预置场景上，把光猫的 DHCP 服务关掉 →
 从笔记本 ping 网关，证据链必须依次给出「无 DHCP 服务器 → 源无地址」，
 而不是仅仅一句"不通"。**该路径已由单元测试 `关闭 DHCP 服务 → 客户端无地址，诊断首错为 NO_DHCP_SERVER` 覆盖。**

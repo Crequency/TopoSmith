@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+// 直接 import JSON（tsconfig 已开 resolveJsonModule）：不碰 node 内置模块，
+// 也就不用为了一个版本号把 @types/node 引进只有 DOM 类型的应用包
+import rootPackage from '../../package.json';
 
 /**
  * 端口由项目自身决定（DevHub 只登记、不分配端口）。
@@ -30,8 +33,14 @@ function buildEnv(name: string): string | undefined {
 
 const base = buildEnv('BASE_PATH') ?? '/';
 
+/** 版本号取**仓库根**的 package.json，界面上的"关于"就不用另写一份 */
+const version = rootPackage.version;
+
 export default defineConfig({
   base,
+  define: {
+    __APP_VERSION__: JSON.stringify(version),
+  },
   plugins: [react(), tailwindcss()],
   server: {
     host: '0.0.0.0',

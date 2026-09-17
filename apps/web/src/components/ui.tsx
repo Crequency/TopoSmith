@@ -193,7 +193,9 @@ export function Button({
       title={title}
       disabled={disabled}
       onClick={onClick}
-      className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
+      // whitespace-nowrap：工具栏是 flex-wrap 的，按钮允许收缩时中文标签会被折成两行
+      // （"连线"曾因此变成上下两个字）—— 按钮的标签是原子内容，不该换行
+      className={`whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
         active ? 'border-amber-400 bg-amber-500/20 text-amber-200' : BUTTON_CLASS[variant]
       }`}
     >
