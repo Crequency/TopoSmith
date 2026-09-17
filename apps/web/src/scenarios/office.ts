@@ -33,8 +33,10 @@ export function buildOfficeScenario(): Scenario {
   const olt = make('olt', 'dev-olt', 'OLT 局端', 60, 210);
   const ont = make('ont', 'dev-ont', '企业光猫', 60, 380);
   const router = make('router', 'dev-router', '企业路由器', 360, 380);
-  const rack = make('rack-24u', 'dev-rack', '机房机柜', 700, 120);
-  rack.rack = { heightU: 24, flipped: false };
+  // 12U 壁挂机柜就够放这 8U 设备（交换机 4U + 服务器 4U）——
+  // 用 24U 机柜会有一半是空柜，画面与真实预算都不划算
+  const rack = make('rack-24u', 'dev-rack', '网络机柜', 700, 120);
+  rack.rack = { heightU: 12, flipped: false };
   const sw = make('switch-24-1g', 'dev-sw', '接入交换机', 0, 0);
   const srv = make('server-rack', 'dev-srv', '业务服务器', 0, 0);
   const ap = make('ap', 'dev-ap', '办公 AP', 1060, 380);

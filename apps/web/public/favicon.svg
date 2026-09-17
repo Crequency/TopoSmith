@@ -2,40 +2,52 @@
 <!--
   TopoSmith 图形标识（mark）
 
-  设计：把「拓扑」与「匠」合成一个记号 ——
-    · 三个**方形**端点是终端设备（台式机/服务器那种方盒子，也是设备卡片的样子）；
-    · 中间**圆形**枢纽是交换机，也是整张图的中心；
-    · 三者连成字母 **T**（Topo 的首字母）。
-  配色取应用速率色标的两端：青（sky-400，界面强调色）→ 绿（emerald-400，链路可用）。
-  徽章底用画布同色（slate-950）+ 一圈描边，于是在浅色浏览器标签栏上也有清晰轮廓。
+  设计：
+    · **六边形徽章** —— 机架的六角螺栓与"网络织物"的双关，轮廓比方徽章更独特，
+      在浏览器标签栏里一眼能认出来；玻璃质感（深色渐变 + 内侧亮边）与画布同色系；
+    · 徽章内是一个 **T 形拓扑**（Topo 的首字母）：中间**方形**枢纽是交换机/机架设备，
+      三个**圆形**端点是终端；顶杠两根连线带轻微下垂 —— 这正是画布上电缆的形态，
+      标识与产品说的是同一种语言；
+    · 配色沿用应用的速率色标：青（#22d3ee，界面强调色）→ 天蓝（#38bdf8）→ 绿（#34d399，链路可用）。
 
-  尺寸约定：64×64 画布，内容边界 x 7.6–56.4 / y 14.1–49.9（四周留边 ≥7.6），
-  最小可用尺寸 16px —— 16px 下方形与圆形的差别已经看不清，但"一根横杠 + 一根竖杠
-  + 端头小方块"的 T 形轮廓仍然成立。
-  派生文件（favicon、PNG）由 `pnpm brand` 生成，勿手工编辑。
+  尺寸约定：64×64 画布；六边形内接半径 31，内容边界 x 7.4–56.6 / y 12.4–49.1；
+  最小可用尺寸 16px（此时"六边形 + T"两个特征都还成立）。
+  派生文件（favicon / PNG）由 `pnpm brand` 生成，勿手工编辑。
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="TopoSmith">
   <defs>
-    <linearGradient id="ts-wire" x1="6" y1="10" x2="58" y2="52" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#38bdf8"/>
+    <linearGradient id="ts-badge" x1="32" y1="0" x2="32" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#111c30"/>
+      <stop offset="1" stop-color="#04070f"/>
+    </linearGradient>
+    <linearGradient id="ts-rim" x1="32" y1="0" x2="32" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.12"/>
+    </linearGradient>
+    <linearGradient id="ts-wire" x1="9" y1="12" x2="55" y2="50" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="0.55" stop-color="#38bdf8"/>
       <stop offset="1" stop-color="#34d399"/>
     </linearGradient>
   </defs>
 
-  <rect x="0" y="0" width="64" height="64" rx="14" fill="#020617"/>
-  <rect x="1" y="1" width="62" height="62" rx="13" fill="none" stroke="#1e293b" stroke-width="2"/>
+  <!-- 六边形徽章 + 内侧亮边 -->
+  <polygon id="ts-badge-shape" points="32,0.6 59.4,16.4 59.4,47.6 32,63.4 4.6,47.6 4.6,16.4" fill="url(#ts-badge)"/>
+  <polygon points="32,3.4 57,17.9 57,46.1 32,60.6 7,46.1 7,17.9" fill="none" stroke="url(#ts-rim)" stroke-width="1.6"/>
 
-  <!-- 连线：横杠 + 竖杠 -->
-  <g fill="none" stroke="url(#ts-wire)" stroke-width="4.4" stroke-linecap="round">
-    <path d="M12 18.5 H52"/>
-    <path d="M32 18.5 V45.5"/>
+  <!-- 连线：顶杠两根带轻微下垂，竖杠笔直 -->
+  <g fill="none" stroke="url(#ts-wire)" stroke-width="4.8" stroke-linecap="round">
+    <path d="M13.5 22 Q22.5 26 31.5 22"/>
+    <path d="M32.5 22 Q41.5 26 50.5 22"/>
+    <path d="M32 23.5 V42.5"/>
   </g>
 
-  <!-- 节点：三个方端点 + 一个圆枢纽 -->
+  <!-- 节点：方形枢纽（交换机）+ 三个圆形端点（终端） -->
+  <rect x="25.8" y="15.8" width="12.4" height="12.4" rx="4" fill="url(#ts-wire)"/>
   <g fill="url(#ts-wire)">
-    <rect x="7.6" y="14.1" width="8.8" height="8.8" rx="2.4"/>
-    <rect x="47.6" y="14.1" width="8.8" height="8.8" rx="2.4"/>
-    <rect x="27.6" y="41.1" width="8.8" height="8.8" rx="2.4"/>
-    <circle cx="32" cy="18.5" r="8.4"/>
+    <circle cx="13.5" cy="22" r="4.5"/>
+    <circle cx="50.5" cy="22" r="4.5"/>
+    <circle cx="32" cy="42.5" r="4.5"/>
   </g>
 </svg>

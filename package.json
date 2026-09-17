@@ -12,7 +12,8 @@
     "typecheck": "pnpm -r --sequential typecheck",
     "test": "pnpm --filter @toposmith/engine test",
     "test:web": "pnpm --filter @toposmith/web test",
-    "brand": "node scripts/build-brand.mjs"
+    "brand": "node scripts/build-brand.mjs",
+    "screenshot": "node scripts/screenshot.mjs"
   },
   "devDependencies": {
     "typescript": "^7.0.2"
