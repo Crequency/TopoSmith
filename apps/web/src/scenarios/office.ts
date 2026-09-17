@@ -208,7 +208,7 @@ export function buildOfficeScenario(): Scenario {
     id: 'scenario-office',
     name: '小微企业办公网（VLAN 分段）',
     description:
-      '光猫出口 + 企业路由器带三个 VLAN（办公 10 / 访客 20 / 服务器 30），接入交换机与业务服务器装在机柜里。' +
+      '光猫出口 + 企业路由器带三个 VLAN（办公 1 / 访客 20 / 服务器 30），接入交换机与业务服务器装在机柜里。' +
       '**打印机那一口故意留在 VLAN 1**：从办公电脑 ping 它会得到「两端不在同一广播域」，在端口详情里把 PVID 改回 10 即可修好。',
     devices,
     cables,

@@ -437,3 +437,52 @@ describe('网格吸附（FR-37）', () => {
     state().setSnapEnabled(true);
   });
 });
+
+describe('链路聚合开关（FR-66）', () => {
+  const bondedIds = () =>
+    state()
+      .scenario.cables.filter((cable) => cable.bonded)
+      .map((cable) => cable.id)
+      .sort();
+
+  it('勾选一次就把「同一对设备之间」的所有线缆标成聚合，并且只记一条历史', () => {
+    state().loadPreset('loop');
+    expect(bondedIds()).toEqual([]);
+    expect(state().world.loops).toHaveLength(3);
+
+    state().setBonded('cbl-redundant-1', true);
+
+    // 聚合是"一对设备之间的组"：同对端的另一根必须一起标上
+    expect(bondedIds()).toEqual(['cbl-redundant-1', 'cbl-redundant-2']);
+    // 双上行聚合成一条逻辑链路 → 少一处环（另外两处是自环跳线与无线中继）
+    expect(state().world.loops).toHaveLength(2);
+    // 不会误伤别的链路（别的线缆一根都没被标上）
+    expect(state().scenario.cables.find((cable) => cable.id === 'cbl-core-a')?.bonded).toBeUndefined();
+    expect(bondedIds()).toHaveLength(2);
+
+    // 一次撤销回到"三处环"的原始状态
+    state().undo();
+    expect(bondedIds()).toEqual([]);
+    expect(state().world.loops).toHaveLength(3);
+  });
+
+  it('解除聚合会把整组标记清掉，不会留下单成员聚合', () => {
+    state().loadPreset('loop');
+    state().setBonded('cbl-redundant-2', true);
+    expect(bondedIds()).toEqual(['cbl-redundant-1', 'cbl-redundant-2']);
+
+    state().setBonded('cbl-redundant-2', false);
+    expect(bondedIds()).toEqual([]);
+    expect(state().world.loops).toHaveLength(3);
+  });
+
+  it('聚合不改变可达性：办公段到服务器段依然通', () => {
+    state().loadPreset('loop');
+    state().setBonded('cbl-redundant-1', true);
+    expect(state().world.loops).toHaveLength(2);
+    state().setDiagSrc('dev-pc1');
+    state().setDiagDst('192.168.20.10');
+    state().runDiag('ping');
+    expect(state().diag.result?.ok).toBe(true);
+  });
+});
