@@ -164,6 +164,13 @@
 | README 高规格化（FR-61） | 顶部按主题展示字标 + 徽章行 + **1920×1080 主图** + 六套预置场景表 + 文档索引 + 质量数据 + 许可（新增 MIT `LICENSE`）；主图由 `pnpm screenshot` 生成 | 主图 1920×1080、场景为小微企业办公网、诊断结论可见；截图脚本与品牌脚本共用 Chromium 加载器 |
 | 顺带修掉的既有问题 | ① 办公网场景用 24U 机柜装 8U 设备（一半空柜，画面中心被空柜占满）→ 改 12U；② `scripts/build-brand.mjs` 里写死的本机 playwright 路径 → 抽成可覆盖的加载器 | 场景测试全绿；两个脚本在缺 playwright 时给出可操作报错 |
 
+### M0 第十六轮迭代（用户反馈驱动，2026-09-17）
+
+| 需求 | 交付 | 实测 |
+|---|---|---|
+| CI 流程（英文） | `.github/workflows/ci.yml`：`verify`（typecheck + 引擎/前端单测 + 生产构建）与 `deploy`（`needs: verify`、仅 main、`id-token`/`pages` 最小权限、`enablement` 首次自动开通 Pages） | YAML 可解析；两个 job 权限与依赖关系核对通过；`pnpm install --frozen-lockfile` 与全部步骤在本机等价命令下通过 |
+| GitHub Pages 部署（FR-63 / D-47） | `base` 由 `BASE_PATH` 注入（CI 取 `configure-pages` 的 `base_path`）；`index.html` 的 5 个链接改用 `%BASE_URL%`；页眉硬编码的 `/favicon.svg` 改用 `import.meta.env.BASE_URL` | `BASE_PATH=/TopoSmith/ pnpm build` 后产物中 script/link/favicon/manifest **全部带前缀**；用请求拦截把 dist 挂在 `https://pages.test/TopoSmith/` 下打开：画布正常、页眉标识加载成功、**无 404 与控制台错误** |
+
 **M0 完成定义（DoD）**：在预置场景上，把光猫的 DHCP 服务关掉 →
 从笔记本 ping 网关，证据链必须依次给出「无 DHCP 服务器 → 源无地址」，
 而不是仅仅一句"不通"。**该路径已由单元测试 `关闭 DHCP 服务 → 客户端无地址，诊断首错为 NO_DHCP_SERVER` 覆盖。**

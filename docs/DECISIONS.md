@@ -808,3 +808,32 @@
   - 标识几何在 `mark.svg` 与两个字标里各有一份（用嵌套 viewBox 复用，但不是同文件）。
 - **状态**：✅ 生效（2026-09-17）；产物：`assets/brand/*`、`apps/web/public/favicon*`、
   `docs/assets/screenshot-office.png`（1920×1080）
+
+## D-47 部署基路径交给 CI 计算；仓库里不留任何绝对资源路径
+
+- **背景**：用户要求"配置 GitHub CI（英文流程）、部署到 GitHub Pages，注意 baseURL"。
+  GitHub Pages 的**项目站点**是子路径（`https://<owner>.github.io/<repo>/`），
+  这是最容易翻车的一类部署：JS/CSS 404 直接白屏，favicon 与 manifest 静默 404。
+- **决策**：
+  1. `base` 由环境变量 `BASE_PATH` 注入，本地/普通构建默认 `/`；
+     CI 里取 `actions/configure-pages` 的 `base_path` 输出（用户站点自动是 `/`，
+     项目站点是 `/TopoSmith`），于是**换仓库名或换成用户站点都不需要改代码**；
+  2. 引用资源一律走基路径感知的写法：`index.html` 用 Vite 的 `%BASE_URL%`，
+     组件用 `import.meta.env.BASE_URL` —— `index.html` 的 5 个 favicon/manifest 链接
+     与页眉里那枚 `<img src="/favicon.svg">` 全部改掉（后者是子路径下必然 404 的硬编码）；
+  3. 单个 workflow 两个 job：`verify`（类型检查 + 两套单测 + 生产构建）与
+     `deploy`（`needs: verify`、仅 main、`if` 排除 PR），权限最小化，
+     `deploy` 才申请 `pages: write` / `id-token: write`；
+  4. **验证方式不是"看 CI 绿了"**：本地用请求拦截把 `dist` 当成挂在
+     `https://pages.test/TopoSmith/` 下的站点喂给浏览器，断言资源带前缀、
+     页眉标识加载成功、无 404 与控制台错误。
+- **理由**：
+  - 基路径是**部署环境的事实**，不该硬编码进源码；交给 CI 计算才能同时支持项目站点与用户站点；
+  - 绝对路径在本地开发下"看起来没问题"（base=`/` 时恰好正确），只有在子路径部署时才暴露 ——
+    所以必须有**在子路径下真的打开一次**的验证，而不是只检查构建产物字符串；
+  - `enablement: true` 让首次推送就能自行打开 Pages，不必先去 Settings 手点一遍。
+- **代价**：
+  - 多一个环境变量；本地若要复现线上路径需要显式 `BASE_PATH=/TopoSmith/ pnpm build`（README 已写）；
+  - `vite.config.ts` 里读环境变量时没有 `@types/node`（本包 tsconfig 只有 DOM 类型），
+    用一小段自带类型的读取函数代替引入 node 类型 —— 避免让应用代码也能"合法"使用 node 全局变量。
+- **状态**：✅ 生效（2026-09-17）；验证：`.verify/pages-base.mjs`（子路径下启动 + 资源前缀断言）

@@ -11,6 +11,12 @@
 </p>
 
 <p align="center">
+  <b>在线试用</b> → <a href="https://crequency.github.io/TopoSmith/">https://crequency.github.io/TopoSmith/</a>
+  <sub>（纯静态站点，由 GitHub Pages 托管；打开即用，数据只存在浏览器本地）</sub>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Crequency/TopoSmith/actions/workflows/ci.yml"><img src="https://github.com/Crequency/TopoSmith/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/tests-31%20engine%20%C2%B7%20182%20web-brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/build-436%20kB%20%C2%B7%20135%20kB%20gzip-blue" alt="Build size">
@@ -91,6 +97,18 @@ pnpm brand        # 由 assets/brand 重新生成 favicon / PNG
 开发服务器监听 `0.0.0.0:31006`（`strictPort`，端口不漂移）。
 `pnpm screenshot` 与 `pnpm brand` 需要 Playwright 的 Chromium（装了 `playwright` 即可，
 也可用 `PLAYWRIGHT_PATH` 指向已有安装）。
+
+**部署到子路径时**（例如 GitHub Pages 的项目站点 `https://<owner>.github.io/<repo>/`）
+必须给出基路径，否则资源与 favicon 会 404、整站白屏：
+
+```bash
+BASE_PATH=/TopoSmith/ pnpm build      # 产物里的资源与图标都带上该前缀
+BASE_PATH=/TopoSmith/ pnpm preview    # 用真实子路径本地预览，地址 http://127.0.0.1:31007/TopoSmith/
+```
+
+CI（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）就是这样做的：
+`verify` 任务跑类型检查与两套单测，`deploy` 任务用 `actions/configure-pages` 给出的
+`base_path` 作为 `BASE_PATH` 构建，再发布到 GitHub Pages。
 
 ## 项目结构
 
