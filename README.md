@@ -78,10 +78,8 @@ TopoSmith 不是逐包网络仿真器，而是**确定性推演器**：从拓扑
 需要 Node ≥ 20 与 pnpm 11；零后端，构建产物是纯静态文件。
 
 ```bash
-# ⚠️ 本机环境变量里的代理（192.168.1.161:40404）已失效，安装必须绕过它
-env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY pnpm install
-
-pnpm dev          # 开发服务器（必须经 DevHub 启停，见下）
+pnpm install
+pnpm dev          # 开发服务器，默认 http://127.0.0.1:31006
 pnpm typecheck    # 全量类型检查（4 个包）
 pnpm test         # 引擎单元测试（31 项）
 pnpm test:web     # 前端单元测试（182 项）
@@ -90,19 +88,9 @@ pnpm screenshot   # 重新生成 README 的界面截图
 pnpm brand        # 由 assets/brand 重新生成 favicon / PNG
 ```
 
-开发服务器**必须经 DevHub 启停**（禁止裸 `pnpm dev &`）：
-
-```bash
-~/.devhub/devctl start toposmith dev --wait-ready
-~/.devhub/devctl logs toposmith dev --follow
-~/.devhub/devctl stop toposmith dev
-```
-
-| 项 | 值 |
-|---|---|
-| 监听 | `0.0.0.0:31006`（`strictPort`，不漂移） |
-| 信任域名 | `toposmith.dev-u26-001.services.local` |
-| 访问 | `http://127.0.0.1:31006` 或 `http://toposmith.dev-u26-001.services.local:31006` |
+开发服务器监听 `0.0.0.0:31006`（`strictPort`，端口不漂移）。
+`pnpm screenshot` 与 `pnpm brand` 需要 Playwright 的 Chromium（装了 `playwright` 即可，
+也可用 `PLAYWRIGHT_PATH` 指向已有安装）。
 
 ## 项目结构
 
@@ -171,25 +159,6 @@ toposmith/
 | `apps/web/public/favicon.svg`、`favicon-16/32.png`、`apple-touch-icon.png`、`icon-192/512.png` | 由 `pnpm brand` 派生，**勿手工编辑**（`manifest.webmanifest` 引用后两者） |
 
 改标识只需改 `assets/brand/mark.svg`（字标几何同步），然后跑一次 `pnpm brand`。
-
-## 本机环境注意事项（实测踩过的坑）
-
-1. **会话里的代理是过期值**：本会话环境变量 `http_proxy/https_proxy` 指向
-   `192.168.1.161:40404`（No route to host），但系统登录 shell 的配置
-   `/etc/profile.d/proxy.sh` 写的是 **`10.0.30.81:40404`，实测可用**。
-   两者不一致源于 2026-09-14 的一次代理迁移。直连 registry 同样可用，
-   因此上面的安装命令直接绕过代理；若需要走代理，请用 `http://10.0.30.81:40404`。
-2. **pnpm 11 不再读取项目 `.npmrc`**：pnpm 配置写在 `pnpm-workspace.yaml`。
-   其中的 `storeDir` 指向工作区内的 `.pnpm-shared-store` —— 因为默认 store 在会话工作区之外，
-   被文件沙箱置为只读，会报 `[ERR_SQLITE_ERROR] unable to open database file`。
-   **换机器/换工作区时这一行必须改。**
-3. **开发服务器必须经 DevHub 启停**：`~/.devhub/registry` 与 `~/.devhub/state` 在工作区之外，
-   登记/启动命令可能需要一次提权重试（见 `~/.devhub/README.md`）。
-4. **开发容器没有中文字体**：`fc-match sans-serif:lang=zh-cn` 会落到 DejaVu Sans，
-   在此容器内截图时中文显示为方框。应用已显式声明中文字体族
-   （`index.css` 的 `--font-sans` 与画布 `UI_FONT`），客户端上显示正常；
-   本机截图可准备一份只加一个字体目录的 fontconfig 并把 `FONTCONFIG_FILE` 指给它
-   （`pnpm screenshot` 会在未设置时给出提示）。
 
 ## 第三方资源与许可
 
