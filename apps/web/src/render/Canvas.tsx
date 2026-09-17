@@ -280,8 +280,20 @@ export function TopologyCanvas() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
       const store = useApp.getState();
+
+      /*
+       * 命令菜单（FR-71）：Ctrl/Cmd+Shift+P —— 与 VSCode 同一个快捷键。
+       * 刻意放在"输入框里不响应"的守卫**之前**：这是个带修饰键的组合键，
+       * 与打字不冲突，而用户在任何地方想调出命令面板都应该能调出来（VSCode 亦如此）。
+       */
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'p') {
+        event.preventDefault();
+        store.togglePalette();
+        return;
+      }
+
+      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
 
       if (event.code === 'Space') {
         event.preventDefault();

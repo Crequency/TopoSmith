@@ -121,6 +121,27 @@ export function ShortcutDialog({ onClose }: { onClose: () => void }) {
             </Row>
           </Section>
 
+          <Section title="面板与布局">
+            <Row keys={<><Kbd>{mod}</Kbd><Kbd>⇧</Kbd><Kbd>P</Kbd></>}>
+              打开命令菜单（VSCode 同款快捷键；mac 上是 <Kbd>⌘</Kbd><Kbd>⇧</Kbd><Kbd>P</Kbd>）
+            </Row>
+            <Row keys={<><span className="text-[10px] text-slate-500">拖卡片标题</span></>}>
+              侧栏卡片排序；拖到另一侧栏即换栏，点标题栏折叠 / 展开
+            </Row>
+            <Row keys={<><Kbd>Alt</Kbd><Kbd>↑</Kbd><span className="text-[10px] text-slate-500">/</span><Kbd>↓</Kbd></>}>
+              把卡片在「本侧栏内」上移 / 下移（焦点在卡片标题上时）
+            </Row>
+            <Row keys={<><Kbd>Alt</Kbd><Kbd>←</Kbd><span className="text-[10px] text-slate-500">/</span><Kbd>→</Kbd></>}>
+              把卡片移到左 / 右侧栏
+            </Row>
+            <Row keys={<><span className="text-[10px] text-slate-500">拖侧栏边缘</span></>}>
+              调整侧栏宽度（<Kbd>←</Kbd><Kbd>→</Kbd> 微调，双击复位）
+            </Row>
+            <Row keys={<><span className="text-[10px] text-slate-500">拖卡片之间的横条</span></>}>
+              调整右侧栏「检查器 / 诊断」的高度比例
+            </Row>
+          </Section>
+
           <Section title="画布导航">
             <Row keys={<><MouseButton>中键</MouseButton><span className="text-[10px] text-slate-500">/</span><MouseButton>右键</MouseButton><span className="text-[10px] text-slate-500">/</span><Kbd>Space</Kbd></>}>
               平移画布（<Kbd>Space</Kbd> 需按住）

@@ -30,6 +30,16 @@ import {
   type World,
 } from '@toposmith/engine';
 import {
+  LAYOUT_STORAGE_KEY,
+  LEGACY_SPLIT_KEY,
+  clampSidebarWidth,
+  defaultLayout,
+  moveCardIds,
+  normalizeLayout,
+  type SidebarSide,
+  type UiLayout,
+} from '../lib/panels';
+import {
   parseScenarioJson,
   type Cable,
   type CableType,
@@ -183,6 +193,14 @@ interface AppState {
   animation: AnimationState;
   history: HistoryInfo;
   toast: Toast | null;
+  /** 侧栏卡片布局（顺序 / 折叠 / 权重 / 宽度）—— 使用偏好，与拓扑分开落盘 */
+  uiLayout: UiLayout;
+  /** 正在被拖动的卡片（拖拽期间高亮，并让其它卡片显示插入位） */
+  draggingCard: { cardId: string; side: SidebarSide } | null;
+  /** 拖拽时的插入位：落在哪一侧的第几格 */
+  cardDropTarget: { side: SidebarSide; index: number } | null;
+  /** 命令菜单（Ctrl/Cmd+Shift+P）是否打开 */
+  paletteOpen: boolean;
 
   /* 视图与选择 */
   select: (selection: Selection) => void;
@@ -190,6 +208,19 @@ interface AppState {
   selectOneCable: (cableId: string) => void;
   selectPort: (deviceId: string, portId: string) => void;
   setSnapEnabled: (enabled: boolean) => void;
+  /* 侧栏布局（FR-69 / FR-70） */
+  setSidebarWidth: (side: SidebarSide, width: number) => void;
+  moveCard: (cardId: string, side: SidebarSide, index: number) => void;
+  toggleCardCollapsed: (cardId: string) => void;
+  setCardWeights: (weights: Record<string, number>) => void;
+  resetLayout: () => void;
+  beginCardDrag: (cardId: string, side: SidebarSide) => void;
+  setCardDropTarget: (target: { side: SidebarSide; index: number } | null) => void;
+  endCardDrag: () => void;
+  /* 命令菜单（FR-71） */
+  openPalette: () => void;
+  closePalette: () => void;
+  togglePalette: () => void;
   toggleDevice: (deviceId: string) => void;
   toggleCable: (cableId: string) => void;
   selectManyDevices: (deviceIds: string[]) => void;
@@ -296,6 +327,38 @@ function persist(scenario: Scenario): void {
   }
 }
 
+/**
+ * 布局落盘（FR-69 / FR-70）
+ *
+ * 和拓扑分开存：布局是"使用偏好"，换场景、清空拓扑都不该把它重置回去；
+ * 反过来，改布局也不该污染拓扑的存档（否则导出/导入会把别人的界面偏好带过去）。
+ */
+function persistLayout(layout: UiLayout): void {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(layout));
+    }
+  } catch {
+    /* 同上：写不进去不影响使用 */
+  }
+}
+
+/** 读布局；没有新档时用 FR-60 时代的分割比例兜底（老用户的高度偏好不该丢） */
+function loadStoredLayout(): UiLayout {
+  try {
+    if (typeof localStorage === 'undefined') return defaultLayout();
+    const raw = localStorage.getItem(LAYOUT_STORAGE_KEY);
+    const legacyRaw = localStorage.getItem(LEGACY_SPLIT_KEY);
+    const legacy = legacyRaw === null ? null : Number(legacyRaw);
+    if (!raw) {
+      return normalizeLayout(null, Number.isFinite(legacy) ? legacy : null);
+    }
+    return normalizeLayout(JSON.parse(raw) as unknown, Number.isFinite(legacy) ? legacy : null);
+  } catch {
+    return defaultLayout();
+  }
+}
+
 /* ────────────────────────────── store ────────────────────────────── */
 
 const initialScenario = loadStoredScenario();
@@ -320,6 +383,8 @@ function initialDiag(world: World): DiagState {
 }
 
 const initialWorld = buildWorld(initialScenario);
+/** 侧栏布局：读盘一次，之后由布局动作直接改 store 并落盘 */
+let layoutState = loadStoredLayout();
 
 function deviceBox(device: Device): Box {
   return { x: device.x, y: device.y, w: cardWidthOf(device), h: cardHeightOf(device) };
@@ -491,11 +556,90 @@ export const useApp = create<AppState>((set, get) => {
     snapEnabled: true,
     history: { canUndo: false, canRedo: false },
     toast: null,
+    uiLayout: layoutState,
+    draggingCard: null,
+    cardDropTarget: null,
+    paletteOpen: false,
 
     /* ── 选择 ── */
     select: (selection) => applySelection(selection),
 
     setSnapEnabled: (enabled) => set({ snapEnabled: enabled }),
+
+    /* ── 侧栏布局（FR-69 / FR-70） ── */
+
+    setSidebarWidth: (side, width) => {
+      const current = get().uiLayout;
+      const windowPx = typeof window === 'undefined' ? 0 : window.innerWidth;
+      const clamped = clampSidebarWidth(width, {
+        windowPx,
+        oppositePx: side === 'left' ? current.rightWidth : current.leftWidth,
+      });
+      const next: UiLayout = {
+        ...current,
+        leftWidth: side === 'left' ? clamped : current.leftWidth,
+        rightWidth: side === 'right' ? clamped : current.rightWidth,
+      };
+      layoutState = next;
+      persistLayout(next);
+      set({ uiLayout: next });
+    },
+
+    moveCard: (cardId, side, index) => {
+      const current = get().uiLayout;
+      const targetList = side === 'left' ? current.left : current.right;
+      // 插入位按"移走自己之后"的列表算：同一列表里往下拖不会差一格（见 lib/panels）
+      const inserted = moveCardIds(targetList, cardId, index);
+      const next: UiLayout = {
+        ...current,
+        left: side === 'left' ? inserted : current.left.filter((id) => id !== cardId),
+        right: side === 'right' ? inserted : current.right.filter((id) => id !== cardId),
+      };
+      layoutState = next;
+      persistLayout(next);
+      set({ uiLayout: next, draggingCard: null, cardDropTarget: null });
+    },
+
+    toggleCardCollapsed: (cardId) => {
+      const current = get().uiLayout;
+      const collapsed = { ...current.collapsed };
+      if (collapsed[cardId]) delete collapsed[cardId];
+      else collapsed[cardId] = true;
+      const next: UiLayout = { ...current, collapsed };
+      layoutState = next;
+      persistLayout(next);
+      set({ uiLayout: next });
+    },
+
+    setCardWeights: (weights) => {
+      const next: UiLayout = { ...get().uiLayout, weights };
+      layoutState = next;
+      persistLayout(next);
+      set({ uiLayout: next });
+    },
+
+    resetLayout: () => {
+      const fallback = defaultLayout();
+      const next: UiLayout = {
+        ...fallback,
+        // 宽度是"当前窗口下的体感"，不跟着卡片顺序一起重置会更符合预期
+        leftWidth: get().uiLayout.leftWidth,
+        rightWidth: get().uiLayout.rightWidth,
+      };
+      layoutState = next;
+      persistLayout(next);
+      set({ uiLayout: next, draggingCard: null, cardDropTarget: null });
+    },
+
+    beginCardDrag: (cardId, side) => set({ draggingCard: { cardId, side } }),
+    setCardDropTarget: (target) => set({ cardDropTarget: target }),
+    endCardDrag: () => set({ draggingCard: null, cardDropTarget: null }),
+
+    /* ── 命令菜单（FR-71） ── */
+
+    openPalette: () => set({ paletteOpen: true }),
+    closePalette: () => set({ paletteOpen: false }),
+    togglePalette: () => set((state) => ({ paletteOpen: !state.paletteOpen })),
 
     selectOneDevice: (deviceId) =>
       applySelection(deviceId ? { devices: [deviceId], cables: [] } : EMPTY_SELECTION),

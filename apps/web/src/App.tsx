@@ -2,14 +2,16 @@
  * TopoSmith 主界面
  *
  * 布局：顶部工具栏 / 左侧设备目录 / 中间画布 / 右侧「检查器 + 诊断」。
+ * 两侧侧栏的宽度可拖（FR-69），侧栏内容是**卡片栈**（FR-70）：
+ * 卡片标题可拖动排序、可拖到另一侧栏、可折叠 —— 右侧栏的卡片之间还能拖高度比例。
+ * 命令菜单（FR-71）挂在最外层，`Ctrl/Cmd+Shift+P` 由画布的全局键盘处理触发。
  */
 
 import { useEffect } from 'react';
 import { TopologyCanvas } from './render/Canvas';
-import { Diagnostics } from './components/Diagnostics';
-import { Inspector } from './components/Inspector';
+import { CommandPalette } from './components/CommandPalette';
 import { LeftPanel } from './components/LeftPanel';
-import { SplitPane } from './components/SplitPane';
+import { RightSidebar } from './components/RightSidebar';
 import { Toast } from './components/Toast';
 import { Toolbar } from './components/Toolbar';
 import { useApp } from './state/store';
@@ -58,24 +60,10 @@ export default function App() {
           )}
         </main>
 
-        <aside className="flex w-[380px] shrink-0 flex-col border-l border-slate-800 bg-slate-900">
-          {/* 检查器 / 连通性诊断 的高度比例可拖动调整（FR-60） */}
-          <SplitPane
-            top={
-              <>
-                <header className="shrink-0 border-b border-slate-800 bg-slate-900/80 px-3 py-2">
-                  <h2 className="text-xs font-semibold tracking-wide text-slate-300">检查器</h2>
-                </header>
-                <div className="min-h-0 flex-1 overflow-y-auto">
-                  <Inspector />
-                </div>
-              </>
-            }
-            bottom={<Diagnostics />}
-          />
-        </aside>
+        <RightSidebar />
       </div>
 
+      <CommandPalette />
       <Toast />
     </div>
   );

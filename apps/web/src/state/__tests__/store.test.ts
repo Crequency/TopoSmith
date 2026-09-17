@@ -486,3 +486,84 @@ describe('链路聚合开关（FR-66）', () => {
     expect(state().diag.result?.ok).toBe(true);
   });
 });
+
+describe('侧栏布局与命令菜单（FR-69 / FR-70 / FR-71）', () => {
+  const layout = () => state().uiLayout;
+
+  it('拖侧栏宽度：改的是使用偏好，不进拓扑的撤销栈（落盘由端到端验证）', () => {
+    state().setSidebarWidth('left', 300);
+    expect(layout().leftWidth).toBe(300);
+    expect(state().history.canUndo).toBe(false);
+  });
+
+  it('宽度被夹在合法区间内（存档/脚本直接写入也安全）', () => {
+    state().setSidebarWidth('left', 10);
+    expect(layout().leftWidth).toBeGreaterThanOrEqual(180);
+    state().setSidebarWidth('left', 100000);
+    expect(layout().leftWidth).toBeLessThanOrEqual(560);
+  });
+
+  it('卡片可以在本侧栏内换位，也可以换到另一侧栏', () => {
+    state().moveCard('tree', 'left', 0);
+    expect(layout().left[0]).toBe('tree');
+
+    state().moveCard('tree', 'right', 0);
+    expect(layout().right[0]).toBe('tree');
+    expect(layout().left).not.toContain('tree');
+
+    // 卡片不会重复、也不会丢
+    const all = [...layout().left, ...layout().right];
+    expect(new Set(all).size).toBe(all.length);
+    expect(all).toHaveLength(10);
+  });
+
+  it('折叠状态可切换；节点树默认折叠（全量列表不常驻）', () => {
+    expect(layout().collapsed['tree']).toBe(true);
+    state().toggleCardCollapsed('tree');
+    expect(layout().collapsed['tree']).toBeUndefined();
+    state().toggleCardCollapsed('tree');
+    expect(layout().collapsed['tree']).toBe(true);
+  });
+
+  it('分割比例以权重形式保存（FR-60 的行为被推广）', () => {
+    state().setCardWeights({ inspector: 3, diagnostics: 1 });
+    expect(layout().weights).toEqual({ inspector: 3, diagnostics: 1 });
+    // 其余卡片仍保留自己的权重（只改被拖的那一对）
+    state().setCardWeights({ inspector: 1.1, diagnostics: 1.4 });
+    expect(layout().weights['inspector']).toBe(1.1);
+  });
+
+  it('重置布局：卡片顺序与折叠回到默认，宽度保留（宽度是当前窗口下的体感）', () => {
+    state().setSidebarWidth('left', 320);
+    state().moveCard('tree', 'right', 0);
+    state().toggleCardCollapsed('tree');
+    state().resetLayout();
+    expect(layout().right).toEqual(['inspector', 'diagnostics']);
+    expect(layout().left).toContain('tree');
+    expect(layout().collapsed).toEqual({ tree: true });
+    expect(layout().leftWidth).toBe(320);
+  });
+
+  it('拖拽现场状态：begin / target / end 三步，落点为空时不改布局', () => {
+    expect(state().draggingCard).toBeNull();
+    state().beginCardDrag('tree', 'left');
+    expect(state().draggingCard).toEqual({ cardId: 'tree', side: 'left' });
+    state().setCardDropTarget({ side: 'right', index: 1 });
+    expect(state().cardDropTarget).toEqual({ side: 'right', index: 1 });
+    state().endCardDrag();
+    expect(state().draggingCard).toBeNull();
+    expect(state().cardDropTarget).toBeNull();
+  });
+
+  it('命令菜单：打开 / 关闭 / 切换（Ctrl+Shift+P 走的是切换语义）', () => {
+    expect(state().paletteOpen).toBe(false);
+    state().openPalette();
+    expect(state().paletteOpen).toBe(true);
+    state().togglePalette();
+    expect(state().paletteOpen).toBe(false);
+    state().togglePalette();
+    expect(state().paletteOpen).toBe(true);
+    state().closePalette();
+    expect(state().paletteOpen).toBe(false);
+  });
+});
