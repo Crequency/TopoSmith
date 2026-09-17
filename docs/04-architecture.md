@@ -116,15 +116,16 @@ toposmith/
     ├─ lib/history.ts        撤销/重做栈：合并窗口 + 拖动事务（纯函数，有单测）
     ├─ lib/speed-color.ts    速率 → 颜色映射（纯函数，有单测）
     ├─ lib/node-tree.ts      节点树派生：机柜父子分组 + 排序 + 过滤（纯函数，有单测）
-    ├─ lib/panels.ts         侧栏卡片布局：插入位 / 换位 / 宽度夹取 / 权重分配（纯函数，有单测）
+    ├─ lib/panels.ts         侧栏页面布局：插入位 / 换位 / 宽度夹取 / 权重分配（纯函数，有单测）
     ├─ lib/command-menu.ts   命令菜单数据与过滤：分组、顺序、子串匹配（纯函数，有单测）
     ├─ lib/cable-physics.ts  连线摆动物理（纯函数，有单测）
     ├─ lib/number-input.ts   数字输入的提交语义：草稿 → 提交（纯函数，有单测）
     ├─ render/draw.ts        纯绘制函数（世界坐标 → 屏幕）+ 连线标签命中框
     ├─ render/Canvas.tsx     画布组件 + 指针交互 + 多选 + 吸附 + 动画循环
-    ├─ components/           Toolbar / LeftPanel / RightSidebar / SidebarStack / SidebarCard 相关
-    │                        （cards.tsx 是"卡片 id → 内容"的唯一登记表）/ Inspector /
-    │                        Diagnostics / CommandPalette / Palette / NodeTree / 各弹窗
+    ├─ components/           Toolbar / LeftPanel / RightSidebar / SidebarTabs（左栏页签）/
+    │                        SidebarStack（右栏堆叠面板）/ sidebar-drop（跨栏落点判定）/
+    │                        cards.tsx（页面 id → 内容的唯一登记表）/ Inspector / Diagnostics /
+    │                        CommandPalette / Palette / NodeTree / 各弹窗
     ├─ scenarios/home.ts     预置家庭场景
     └─ state/store.ts        zustand store
 ```
