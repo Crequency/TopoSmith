@@ -503,7 +503,7 @@ describe('侧栏布局与命令菜单（FR-69 / FR-70 / FR-71）', () => {
     expect(layout().leftWidth).toBeLessThanOrEqual(560);
   });
 
-  it('卡片可以在本侧栏内换位，也可以换到另一侧栏', () => {
+  it('页面可以在本侧栏内换位，也可以换到另一侧栏', () => {
     state().moveCard('tree', 'left', 0);
     expect(layout().left[0]).toBe('tree');
 
@@ -511,18 +511,32 @@ describe('侧栏布局与命令菜单（FR-69 / FR-70 / FR-71）', () => {
     expect(layout().right[0]).toBe('tree');
     expect(layout().left).not.toContain('tree');
 
-    // 卡片不会重复、也不会丢
+    // 页面不会重复、也不会丢（登记的 4 页一个都不能少）
     const all = [...layout().left, ...layout().right];
     expect(new Set(all).size).toBe(all.length);
-    expect(all).toHaveLength(10);
+    expect(all).toHaveLength(4);
   });
 
-  it('折叠状态可切换；节点树默认折叠（全量列表不常驻）', () => {
-    expect(layout().collapsed['tree']).toBe(true);
-    state().toggleCardCollapsed('tree');
-    expect(layout().collapsed['tree']).toBeUndefined();
-    state().toggleCardCollapsed('tree');
-    expect(layout().collapsed['tree']).toBe(true);
+  it('折叠状态可切换（右栏堆叠面板）；默认都不折叠', () => {
+    expect(layout().collapsed).toEqual({});
+    state().toggleCardCollapsed('diagnostics');
+    expect(layout().collapsed['diagnostics']).toBe(true);
+    state().toggleCardCollapsed('diagnostics');
+    expect(layout().collapsed['diagnostics']).toBeUndefined();
+  });
+
+  it('左侧栏页签：默认停在设备目录，切换后记住，且只接受左栏里真实存在的页面', () => {
+    // 上一个用例把节点树搬到右栏了：先回到默认布局，用例之间不互相依赖
+    state().resetLayout();
+    expect(layout().activeLeft).toBe('palette');
+    state().setActiveTab('tree');
+    expect(layout().activeLeft).toBe('tree');
+    // 搬到右栏的页面不能再被选中（它已经不在左栏里了）
+    state().setActiveTab('palette');
+    state().moveCard('palette', 'right', 0);
+    state().setActiveTab('palette');
+    expect(layout().activeLeft).not.toBe('palette');
+    expect(layout().left).toContain(layout().activeLeft);
   });
 
   it('分割比例以权重形式保存（FR-60 的行为被推广）', () => {
@@ -533,14 +547,15 @@ describe('侧栏布局与命令菜单（FR-69 / FR-70 / FR-71）', () => {
     expect(layout().weights['inspector']).toBe(1.1);
   });
 
-  it('重置布局：卡片顺序与折叠回到默认，宽度保留（宽度是当前窗口下的体感）', () => {
+  it('重置布局：页面顺序、选中页签与折叠回到默认，宽度保留（宽度是当前窗口下的体感）', () => {
     state().setSidebarWidth('left', 320);
     state().moveCard('tree', 'right', 0);
     state().toggleCardCollapsed('tree');
     state().resetLayout();
     expect(layout().right).toEqual(['inspector', 'diagnostics']);
-    expect(layout().left).toContain('tree');
-    expect(layout().collapsed).toEqual({ tree: true });
+    expect(layout().left).toEqual(['palette', 'tree']);
+    expect(layout().activeLeft).toBe('palette');
+    expect(layout().collapsed).toEqual({});
     expect(layout().leftWidth).toBe(320);
   });
 

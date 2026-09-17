@@ -1,16 +1,45 @@
-/** 设备面板：按分组列出目录里的设备模板，可拖拽到画布或点击添加（FR-70 起为分组卡片） */
+/**
+ * 设备目录（一整页，FR-43 / FR-70）
+ *
+ * 目录是左栏的一个**页面**：全部分组在一页里列出、整页滚动，与节点树共享左侧空间
+ * （通过页签切换）。分组不再各占一张卡片 —— 页签 + 卡片两套范式混在一起，
+ * 会让"拖标题排版"到底是拖分组还是拖页面变得说不清（用户反馈纠正过这一点）。
+ */
 
-import { templatesByGroup, type TemplateGroup } from '@toposmith/catalog';
+import { TEMPLATE_GROUPS, templatesByGroup, type TemplateGroup } from '@toposmith/catalog';
 import { deviceIcon, Icon, portIcon } from '../lib/icons';
 import { useApp } from '../state/store';
 
-/**
- * 一个分组卡片的内容（FR-70）
- *
- * 卡片化之后，"分组标题 + 设备列表"由 `SidebarStack` 的标题栏 + 这里的内容组成：
- * 分组说明（hint）搬到标题栏右侧，卡里只剩设备条目，省一行高度也少一层视觉噪音。
- */
-export function PaletteGroup({ groupId }: { groupId: string }) {
+export function Palette() {
+  return (
+    <div data-testid="palette-page" className="flex min-h-0 flex-1 flex-col">
+      <header className="shrink-0 border-b border-slate-800 px-3 py-2">
+        <p className="text-[10px] leading-snug text-slate-500">拖到画布，或点击在视口内添加</p>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {TEMPLATE_GROUPS.map((group) => {
+          const templates = templatesByGroup(group.id);
+          if (templates.length === 0) return null;
+          return (
+            <PaletteGroup key={group.id} groupId={group.id} label={group.label} hint={group.hint} />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** 目录里的一个分组：标题 + 设备条目（同一页内的小节，不是独立卡片） */
+function PaletteGroup({
+  groupId,
+  label,
+  hint,
+}: {
+  groupId: string;
+  label: string;
+  hint: string;
+}) {
   const addDevice = useApp((s) => s.addDevice);
   const viewport = useApp((s) => s.viewport);
   const world = useApp((s) => s.world);
@@ -24,12 +53,14 @@ export function PaletteGroup({ groupId }: { groupId: string }) {
   };
 
   const templates = templatesByGroup(groupId as TemplateGroup);
-  if (templates.length === 0) {
-    return <p className="px-3 py-2 text-[11px] text-slate-500">这个分组下暂时没有设备模板。</p>;
-  }
 
   return (
-    <ul className="flex flex-col gap-1 px-2 py-2">
+    <section className="border-b border-slate-800/60 px-2 py-2">
+      <div className="mb-1.5 flex items-baseline justify-between px-1">
+        <h3 className="text-[11px] font-semibold text-slate-400">{label}</h3>
+        <span className="text-[10px] text-slate-600">{hint}</span>
+      </div>
+      <ul className="flex flex-col gap-1">
       {templates.map((template) => (
         <li key={template.key}>
           <button
@@ -65,6 +96,7 @@ export function PaletteGroup({ groupId }: { groupId: string }) {
           </button>
         </li>
       ))}
-    </ul>
+      </ul>
+    </section>
   );
 }

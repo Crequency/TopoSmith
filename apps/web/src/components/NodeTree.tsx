@@ -40,10 +40,10 @@ export function NodeTree() {
   const total = world.ordered.length;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div data-testid="tree-page" className="flex min-h-0 flex-1 flex-col">
       {/*
-        标题与说明在卡片标题栏里（FR-70）：这里只留"过滤 / 排序 / 计数"这些**操作**，
-        以及列表本身。列表给一个高度上限，否则 810 行的场景会把整列卡片顶到看不见底。
+        左栏按页签切换（FR-70）：这一页占满整个侧栏高度，标题由页签承担，
+        这里只留"过滤 / 排序 / 计数"这些**操作**，列表在页面内滚动。
       */}
       <div className="flex shrink-0 flex-col gap-1.5 border-b border-slate-800 px-3 py-2">
         <input
@@ -82,7 +82,7 @@ export function NodeTree() {
         </p>
       </div>
 
-      <div className="max-h-[42vh] min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {rows.length === 0 ? (
           <p className="p-3 text-[11px] leading-relaxed text-slate-500">
             {total === 0 ? '画布上还没有节点，先从「设备目录」拖入设备。' : '没有匹配的节点。'}

@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CARD_IDS,
+  DEFAULT_ACTIVE_LEFT,
   DEFAULT_LEFT_W,
   DEFAULT_RIGHT_W,
   DEFAULT_RIGHT_WEIGHTS,
@@ -113,9 +114,12 @@ describe('上下两块的高度比例（FR-60 的推广）', () => {
 });
 
 describe('布局读写与容错', () => {
-  it('默认布局：卡片按登记表归位，宽度取当前界面的实测值，节点树默认折叠', () => {
+  it('默认布局：页面按登记表归位，左栏默认停在设备目录，右栏两块都不折叠', () => {
     const layout = defaultLayout();
-    expect(layout.collapsed).toEqual({ tree: true });
+    expect(layout.left).toEqual(['palette', 'tree']);
+    expect(layout.right).toEqual(['inspector', 'diagnostics']);
+    expect(layout.activeLeft).toBe('palette');
+    expect(layout.collapsed).toEqual({});
     expect(layout.leftWidth).toBe(DEFAULT_LEFT_W);
     expect(layout.rightWidth).toBe(DEFAULT_RIGHT_W);
     expect(layout.weights).toEqual(DEFAULT_RIGHT_WEIGHTS);
@@ -124,7 +128,7 @@ describe('布局读写与容错', () => {
     expect(layout.right).toEqual(['inspector', 'diagnostics']);
   });
 
-  it('坏存档被整理成合法布局：不重复、不丢失、不出现未知卡片', () => {
+  it('坏存档被整理成合法布局：不重复、不丢失、不出现未知页面', () => {
     const layout = normalizeLayout({
       left: ['tree', 'tree', 'nope', 42],
       right: ['diagnostics'],
@@ -133,9 +137,11 @@ describe('布局读写与容错', () => {
       leftWidth: -50,
       rightWidth: 'wide',
     });
-    expect(layout.left).toEqual(['tree', ...DEFAULT_CARDS_LEFT_REST()]);
+    expect(layout.left).toEqual(['tree', 'palette']);
     expect(layout.right).toEqual(['diagnostics', 'inspector']);
+    // 折叠只记"确实折叠了"的页面（false 项被丢掉）；左栏页面是页签，折叠状态被忽略
     expect(layout.collapsed).toEqual({ tree: true });
+    expect(layout.activeLeft).toBe('tree');
     // 非法权重被忽略、合法权重保留
     expect(layout.weights['inspector']).toBe(3);
     expect(layout.weights['diagnostics']).toBe(DEFAULT_RIGHT_WEIGHTS['diagnostics']);
@@ -144,19 +150,32 @@ describe('布局读写与容错', () => {
     expect([...layout.left, ...layout.right].sort()).toEqual([...CARD_IDS].sort());
   });
 
-  it('折叠状态以存档为准：用户展开过节点树就不会被默认值摁回去', () => {
+  it('折叠状态以存档为准（右栏面板的折叠/展开会被记住）', () => {
     expect(normalizeLayout({ collapsed: {} }).collapsed).toEqual({});
     expect(normalizeLayout({ collapsed: { diagnostics: true } }).collapsed).toEqual({
       diagnostics: true,
     });
-    // 存档里完全没有 collapsed 这一项（老存档 / 手写文件）→ 用默认值
-    expect(normalizeLayout({ left: [], right: [] }).collapsed).toEqual({ tree: true });
+    expect(normalizeLayout({ left: [], right: [] }).collapsed).toEqual({});
   });
 
-  it('跨栏移动过的卡片不会被"补回默认那一侧"', () => {
-    const layout = normalizeLayout({ left: ['tree', 'palette:routing'], right: [] });
-    expect(layout.left).toContain('tree');
-    expect(layout.left).toContain('palette:routing');
+  it('选中的页签必须真的在左栏里（页签会被拖走）', () => {
+    // 存档里选中的是已经被搬到右栏的节点树 → 回落到左栏第一页
+    expect(normalizeLayout({ left: ['palette'], right: ['tree'], activeLeft: 'tree' }).activeLeft).toBe(
+      'palette',
+    );
+    // 整份存档都为空 → 按默认侧补全，选中项落到默认页（不是空字符串）
+    expect(normalizeLayout({ left: [], right: [], activeLeft: 'palette' }).activeLeft).toBe(
+      DEFAULT_ACTIVE_LEFT,
+    );
+    // 正常情况原样保留
+    expect(normalizeLayout({ left: ['palette', 'tree'], activeLeft: 'tree' }).activeLeft).toBe('tree');
+  });
+
+  it('跨栏移动过的页面不会被"补回默认那一侧"', () => {
+    // 用户把检查器拖到了左栏：它必须留在左栏，而不是因为"默认在右侧"被补回去
+    const layout = normalizeLayout({ left: ['inspector', 'palette'], right: ['tree'] });
+    expect(layout.left).toEqual(['inspector', 'palette']);
+    expect(layout.right).toEqual(['tree', 'diagnostics']);
     expect([...layout.left, ...layout.right].sort()).toEqual([...CARD_IDS].sort());
   });
 
@@ -172,8 +191,3 @@ describe('布局读写与容错', () => {
   });
 });
 
-/** 默认布局里除 tree 之外的左侧卡片（断言补全顺序时用，避免把顺序写死在测试里） */
-function DEFAULT_CARDS_LEFT_REST(): string[] {
-  const layout = defaultLayout();
-  return layout.left.filter((id) => id !== 'tree');
-}
