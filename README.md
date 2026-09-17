@@ -18,7 +18,7 @@
 <p align="center">
   <a href="https://github.com/Crequency/TopoSmith/actions/workflows/ci.yml"><img src="https://github.com/Crequency/TopoSmith/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/tests-45%20engine%20%C2%B7%20218%20web-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-45%20engine%20%C2%B7%20219%20web-brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/build-478%20kB%20%C2%B7%20148%20kB%20gzip-blue" alt="Build size">
   <img src="https://img.shields.io/badge/TypeScript-strict-3178c6" alt="TypeScript strict">
   <img src="https://img.shields.io/badge/backend-none-8b5cf6" alt="No backend">
@@ -97,7 +97,7 @@ pnpm install
 pnpm dev          # 开发服务器，默认 http://127.0.0.1:31006
 pnpm typecheck    # 全量类型检查（4 个包）
 pnpm test         # 引擎单元测试（45 项）
-pnpm test:web     # 前端单元测试（218 项）
+pnpm test:web     # 前端单元测试（219 项）
 pnpm build        # 构建静态产物到 apps/web/dist
 pnpm screenshot   # 重新生成 README 的界面截图
 pnpm brand        # 由 assets/brand 重新生成 favicon / PNG
@@ -154,7 +154,7 @@ toposmith/
 ## 质量与验证
 
 - **引擎单测 45 项**覆盖链路协商、广播域、二层环路与聚合、路由、DHCP/DNS、四类诊断与原因码；
-- **前端单测 218 项**覆盖几何 / 端口布局 / 折线弧长 / 标签几何 / 摆动物理 / 适应视图 /
+- **前端单测 219 项**覆盖几何 / 端口布局 / 折线弧长 / 标签几何 / 摆动物理 / 适应视图 /
   侧栏卡片布局 / 命令菜单 / 节点树 / store 行为，以及**七套预置场景的行为承诺**；
 - 端到端脚本用真实 Chromium 驱动，覆盖启动、四类诊断、多选与框选、对齐吸附、机柜与翻转、
   标签拖拽、悬浮透视、弹窗流程与**性能预算**（`.verify/` 下，属本机脚本、不入库）；
