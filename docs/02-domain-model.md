@@ -83,6 +83,7 @@ role === 'trunk'  →  allowedVlans.includes(vlan)
 | `lengthM` | number | 长度（米）；无线为 0 |
 | `a`, `b` | Endpoint | 两端 `{deviceId, portId}` |
 | `labelRatio?` | number | 速率标签在连线上的**弧长比例**（0 = A 端，1 = B 端，缺省 0.5）。**纯展示字段**，不参与推演（FR-46 / D-36） |
+| `bonded?` | boolean | 是否属于「与对端之间的**链路聚合组**」（LACP / 静态聚合）。没有组 id：同一对设备之间所有 `bonded` 的线缆即同一组，多条时在推演中视为**一条逻辑链路**（因此不成环）。**参与推演**（FR-66 / D-50） |
 
 ### 2.4 地址模型
 
