@@ -26,7 +26,6 @@ export function RightSidebar() {
       >
         <SidebarStack
           side="right"
-          mode="weighted"
           renderCard={renderSidebarCard}
           cardHint={sidebarCardHint}
           cardActions={(cardId) => <SidebarCardActions cardId={cardId} />}

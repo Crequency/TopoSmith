@@ -1,21 +1,22 @@
 /**
- * 侧栏卡片布局（纯函数，FR-69 / FR-70）
+ * 侧栏页面布局（纯函数，FR-69 / FR-70）
  *
- * 左右两侧侧栏现在都是**一叠卡片**：卡片标题栏可以拖动排序、可以拖到另一侧、
- * 可以折叠；侧栏本身的宽度也能拖。这些计算全部抽成纯函数放在这里，原因有两个：
+ * 每个侧栏由若干**页面**（page）组成，每页是一整块内容：
+ *  · **左侧栏**用**页签**切换（页签是页面的标题，也是拖拽手柄）—— 设备目录与节点树
+ *    共享同一块空间，一次看一个；这与 VSCode 的主侧栏（一次显示一个视图容器）一致。
+ *  · **右侧栏**把页面**上下堆叠**、按权重分配高度、相邻页面之间可拖 ——
+ *    因为检查器与诊断要同时可见（FR-60），页签会把其中一块藏起来。
+ *  两种排布方式并存不是权宜：左栏是"二选一的工作区"，右栏是"两块常驻面板"。
+ *
+ * 这些计算全部抽成纯函数放在这里，原因有两个：
  *  1. 指针拖拽最容易出的错（插入位差一格、越界、把某一块拖没）都能用单测钉住，
  *     不必靠手点画布才发现；
  *  2. 布局要落盘（localStorage），存的是**数据**，读写与迁移也需要可测的纯逻辑。
- *
- * 名词：*卡片*（card）= 侧栏里带标题栏的一段内容；*侧*（side）= left / right。
  */
 
-/* ────────────────────────────── 卡片登记表 ────────────────────────────── */
+/* ────────────────────────────── 页面登记表 ────────────────────────────── */
 
 export type SidebarSide = 'left' | 'right';
-
-/** 设备目录的分组卡片 id 形如 `palette:routing`，与 catalog 的分组 id 对应 */
-export const PALETTE_CARD_PREFIX = 'palette:';
 
 export interface CardMeta {
   id: string;
@@ -25,20 +26,13 @@ export interface CardMeta {
 }
 
 /**
- * 卡片的**默认**归属与顺序（用户改过的顺序存在 localStorage 里）。
+ * 页面的**默认**归属与顺序（用户改过的顺序存在 localStorage 里）。
  *
- * 左侧是"设备目录的各个分组 + 节点树"：分组卡片让目录可以按自己的习惯重排，
- * 节点树不再挤在一个页签里（页签与卡片是两种范式，混在一起会让"拖标题"失效）。
- * 右侧是检查器与诊断 —— 它们的高度按权重分配（保 FR-60）。
+ * 左侧两页：设备目录（全部分组在一页里滚动）与节点树 —— 它们共享左侧空间，用页签切换。
+ * 右侧两页：检查器与诊断 —— 上下堆叠、高度按权重分配（保 FR-60）。
  */
 export const DEFAULT_CARDS: CardMeta[] = [
-  { id: `${PALETTE_CARD_PREFIX}access`, title: '接入与出口', side: 'left' },
-  { id: `${PALETTE_CARD_PREFIX}routing`, title: '路由与交换', side: 'left' },
-  { id: `${PALETTE_CARD_PREFIX}wireless`, title: '无线', side: 'left' },
-  { id: `${PALETTE_CARD_PREFIX}computer`, title: '计算机', side: 'left' },
-  { id: `${PALETTE_CARD_PREFIX}mobile`, title: '可移动设备', side: 'left' },
-  { id: `${PALETTE_CARD_PREFIX}embedded`, title: '嵌入式设备', side: 'left' },
-  { id: `${PALETTE_CARD_PREFIX}infrastructure`, title: '机架与容器', side: 'left' },
+  { id: 'palette', title: '设备目录', side: 'left' },
   { id: 'tree', title: '节点树', side: 'left' },
   { id: 'inspector', title: '检查器', side: 'right' },
   { id: 'diagnostics', title: '连通性诊断', side: 'right' },
@@ -55,6 +49,9 @@ export const DEFAULT_RIGHT_WEIGHTS: Record<string, number> = {
   inspector: 1.1,
   diagnostics: 1.4,
 };
+
+/** 左侧栏默认显示哪一页（设备目录，与旧版默认页签一致） */
+export const DEFAULT_ACTIVE_LEFT = 'palette';
 
 /* ────────────────────────────── 侧栏宽度 ────────────────────────────── */
 
@@ -161,9 +158,11 @@ export interface UiLayout {
   /** 左右两侧的卡片顺序（卡片的"归属"由它决定，不再看默认值） */
   left: string[];
   right: string[];
-  /** 折叠状态（缺省 = 展开） */
+  /** 左侧栏当前显示哪一页（页签选中项） */
+  activeLeft: string;
+  /** 折叠状态（只对右侧栏的堆叠页面有意义，缺省 = 展开） */
   collapsed: Record<string, boolean>;
-  /** 右侧栏各卡片的权重 */
+  /** 右侧栏各页面的权重 */
   weights: Record<string, number>;
   leftWidth: number;
   rightWidth: number;
@@ -174,19 +173,19 @@ export const LAYOUT_STORAGE_KEY = 'toposmith.ui.layout.v1';
 export const LEGACY_SPLIT_KEY = 'toposmith.ui.sidebarSplit';
 
 /**
- * 默认折叠的卡片。
+ * 默认折叠的页面：右侧栏一个都不折。
  *
- * 只有节点树：它是**全量渲染**的列表（中型 IDC 场景 810 行 ≈ 1.6 万 DOM 节点，
- * 见 docs/08-roadmap.md 的规模数据），不该在用户没看它的时候就挂上去。
- * 这也与旧版"默认停在设备目录页签"的行为一致 —— 树是需要时才打开的东西。
+ * 左栏不需要折叠概念 —— 页签本身就是"一次只看一页"。折叠只用于右侧栏的堆叠页面
+ * （把不常看的诊断收起来，给检查器让高度）。
  */
-export const DEFAULT_COLLAPSED: Record<string, boolean> = { tree: true };
+export const DEFAULT_COLLAPSED: Record<string, boolean> = {};
 
-/** 默认布局：卡片按登记表归位，宽度取当前界面的实测值 */
+/** 默认布局：页面按登记表归位，宽度取当前界面的实测值 */
 export function defaultLayout(): UiLayout {
   return {
     left: DEFAULT_CARDS.filter((card) => card.side === 'left').map((card) => card.id),
     right: DEFAULT_CARDS.filter((card) => card.side === 'right').map((card) => card.id),
+    activeLeft: DEFAULT_ACTIVE_LEFT,
     collapsed: { ...DEFAULT_COLLAPSED },
     weights: { ...DEFAULT_RIGHT_WEIGHTS },
     leftWidth: DEFAULT_LEFT_W,
@@ -258,6 +257,11 @@ export function normalizeLayout(input: unknown, legacyRatio?: number | null): Ui
   return {
     left,
     right,
+    // 选中的页签必须真的在左侧栏里：页签会被拖走，落盘时可能指着已搬走的页面
+    activeLeft:
+      typeof raw.activeLeft === 'string' && left.includes(raw.activeLeft)
+        ? raw.activeLeft
+        : (left[0] ?? DEFAULT_ACTIVE_LEFT),
     collapsed,
     weights,
     leftWidth:

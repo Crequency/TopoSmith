@@ -136,9 +136,13 @@ export function SidebarResizer({ side }: { side: SidebarSide }) {
       onPointerCancel={endDrag}
       onKeyDown={onKeyDown}
       onDoubleClick={() => apply(side === 'left' ? DEFAULT_LEFT_W : DEFAULT_RIGHT_W)}
-      className={`group relative z-10 w-1.5 shrink-0 cursor-col-resize bg-slate-800 transition hover:bg-sky-500/60 focus:bg-sky-500/60 focus:outline-none ${
-        side === 'left' ? 'order-last' : ''
-      }`}
+      /*
+       * 不要在这里动 flex 顺序：分隔条必须**紧跟在自己那一侧栏后面**。
+       * 曾经给左侧分隔条加过 `order-last`（当时想让它"贴着画布"），
+       * 结果它被排到整行的最右端 —— 于是左侧栏与画布之间根本没有可抓的边，
+       * 用户看到的就是"左侧侧栏拖不动"。
+       */
+      className="group relative z-10 w-1.5 shrink-0 cursor-col-resize bg-slate-800 transition hover:bg-sky-500/60 focus:bg-sky-500/60 focus:outline-none"
     >
       {/* 命中区比视觉宽一点：1.5px 的线真的很难点 */}
       <span className="absolute inset-y-0 -left-1 -right-1" />

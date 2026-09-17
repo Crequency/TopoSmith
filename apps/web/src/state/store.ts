@@ -259,6 +259,13 @@ interface AppState {
    * 一根线谈不上聚合，只改一根还会留下"孤零零的聚合成员"这种坏数据。
    */
   setBonded: (cableId: string, bonded: boolean) => void;
+  /**
+   * 切换左侧栏的当前页面（点页签）。
+   *
+   * 只接受左栏里真实存在的页面：页签会被拖到右侧栏去，落盘的选中项可能指着
+   * 一个已经搬走的页面（那种情况下保持原选中，渲染时会兜底挑第一页）。
+   */
+  setActiveTab: (cardId: string) => void;
   removeCable: (cableId: string) => void;
   deleteSelection: () => void;
   alignSelection: (mode: AlignMode) => void;
@@ -568,6 +575,15 @@ export const useApp = create<AppState>((set, get) => {
 
     /* ── 侧栏布局（FR-69 / FR-70） ── */
 
+    setActiveTab: (cardId) => {
+      const current = get().uiLayout;
+      if (!current.left.includes(cardId) || current.activeLeft === cardId) return;
+      const next: UiLayout = { ...current, activeLeft: cardId };
+      layoutState = next;
+      persistLayout(next);
+      set({ uiLayout: next });
+    },
+
     setSidebarWidth: (side, width) => {
       const current = get().uiLayout;
       const windowPx = typeof window === 'undefined' ? 0 : window.innerWidth;
@@ -590,10 +606,13 @@ export const useApp = create<AppState>((set, get) => {
       const targetList = side === 'left' ? current.left : current.right;
       // 插入位按"移走自己之后"的列表算：同一列表里往下拖不会差一格（见 lib/panels）
       const inserted = moveCardIds(targetList, cardId, index);
+      const left = side === 'left' ? inserted : current.left.filter((id) => id !== cardId);
       const next: UiLayout = {
         ...current,
-        left: side === 'left' ? inserted : current.left.filter((id) => id !== cardId),
+        left,
         right: side === 'right' ? inserted : current.right.filter((id) => id !== cardId),
+        // 选中的页签被搬走 / 被换位后要重新落定，不能指着不在左栏的页面
+        activeLeft: left.includes(current.activeLeft) ? current.activeLeft : (left[0] ?? ''),
       };
       layoutState = next;
       persistLayout(next);

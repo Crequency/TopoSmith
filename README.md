@@ -18,8 +18,8 @@
 <p align="center">
   <a href="https://github.com/Crequency/TopoSmith/actions/workflows/ci.yml"><img src="https://github.com/Crequency/TopoSmith/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/tests-45%20engine%20%C2%B7%20219%20web-brightgreen" alt="Tests">
-  <img src="https://img.shields.io/badge/build-478%20kB%20%C2%B7%20148%20kB%20gzip-blue" alt="Build size">
+  <img src="https://img.shields.io/badge/tests-45%20engine%20%C2%B7%20221%20web-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/build-482%20kB%20%C2%B7%20149%20kB%20gzip-blue" alt="Build size">
   <img src="https://img.shields.io/badge/TypeScript-strict-3178c6" alt="TypeScript strict">
   <img src="https://img.shields.io/badge/backend-none-8b5cf6" alt="No backend">
   <img src="https://img.shields.io/badge/status-M0-orange" alt="Status: M0">
@@ -52,8 +52,9 @@ TopoSmith 不是逐包网络仿真器，而是**确定性推演器**：从拓扑
 - **有背板端口的设备悬浮即半透明**，直接看到背面端口；设备自身也可翻面
 - 框选与 Ctrl/Shift 多选；六向对齐 + 两轴等距分布；网格与节点吸附（带引导线）
 - 撤销重做（含拖动事务合并）、导入导出、节点树（搜索 / 排序 / 双击定位）
-- **侧栏卡片布局**：标题栏可拖动排序、可拖到另一侧栏、可折叠；两侧侧栏宽度可拖
-  （`←/→` 微调、双击复位，宽度与顺序都记住）
+- **侧栏页面布局**：左侧栏用**页签**在「设备目录 / 节点树」之间切换（各占整页），
+  右侧栏把「检查器 / 诊断」上下堆叠、高度可拖；页面（页签 / 面板）可**拖到另一侧栏**，
+  右侧面板标题可折叠；两侧侧栏宽度可拖（`←/→` 微调、双击复位，宽度与布局都记住）
 - **命令菜单** `Ctrl/Cmd+Shift+P`：按 VSCode 习惯的面板（搜索 / 分组 / 键盘导航）——
   当前只有界面，命令尚未接入，界面上如实标注
 
@@ -97,7 +98,7 @@ pnpm install
 pnpm dev          # 开发服务器，默认 http://127.0.0.1:31006
 pnpm typecheck    # 全量类型检查（4 个包）
 pnpm test         # 引擎单元测试（45 项）
-pnpm test:web     # 前端单元测试（219 项）
+pnpm test:web     # 前端单元测试（221 项）
 pnpm build        # 构建静态产物到 apps/web/dist
 pnpm screenshot   # 重新生成 README 的界面截图
 pnpm brand        # 由 assets/brand 重新生成 favicon / PNG
@@ -154,7 +155,7 @@ toposmith/
 ## 质量与验证
 
 - **引擎单测 45 项**覆盖链路协商、广播域、二层环路与聚合、路由、DHCP/DNS、四类诊断与原因码；
-- **前端单测 219 项**覆盖几何 / 端口布局 / 折线弧长 / 标签几何 / 摆动物理 / 适应视图 /
+- **前端单测 221 项**覆盖几何 / 端口布局 / 折线弧长 / 标签几何 / 摆动物理 / 适应视图 /
   侧栏卡片布局 / 命令菜单 / 节点树 / store 行为，以及**七套预置场景的行为承诺**；
 - 端到端脚本用真实 Chromium 驱动，覆盖启动、四类诊断、多选与框选、对齐吸附、机柜与翻转、
   标签拖拽、悬浮透视、弹窗流程与**性能预算**（`.verify/` 下，属本机脚本、不入库）；

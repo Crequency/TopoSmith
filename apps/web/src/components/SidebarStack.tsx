@@ -1,32 +1,28 @@
 /**
- * 侧栏卡片栈（FR-70）
+ * 右侧栏的**堆叠面板**（FR-60 / FR-70）
  *
- * 侧栏里的内容不再是"页签 + 一大块"，而是一叠**卡片**：每张卡片有自己的标题栏，
- * 标题栏可以拖动 —— 在同侧栏内排序、拖到另一侧栏；点一下折叠/展开。这是 VSCode 的做法
- * （资源管理器里的各个分组，以及"把视图拖到次侧栏"），它比页签更合身的地方有两点：
+ * 右栏与左栏的排布方式**故意不同**：
+ *  · 左栏是"二选一的工作区"（设备目录 / 节点树），用页签切换；
+ *  · 右栏的检查器与诊断要**同时可见**，所以上下堆叠、按**权重**分配高度、
+ *    相邻面板之间可以拖 —— 这正是 FR-60「检查器/诊断高度比例可调」的推广形式
+ *    （N=2 时就是一条分割线）。
  *
- *  1. 页签一次只能看一个，而"设备目录的分组"和"节点树"经常需要同时看；
- *  2. 顺序与折叠是**用户自己的信息架构** —— 常用的排上面、不常用的折起来，
- *     这件事只有用户知道，所以必须可改、并且记住。
+ * 面板标题栏既是拖拽手柄（本栏换位 / 拖到左栏变成页签），也是折叠开关：
+ * 把不常看的那块折起来，另一个立刻拿到全部高度。
  *
- * 两种布局模式（不是随手定的）：
- *  · `flow`：卡片按内容高度堆叠、整列滚动 —— 设备目录这种短卡片适合它；
- *  · `weighted`：卡片按**权重**分配容器高度、相邻卡片之间可拖 —— 右侧栏用它，
- *    因为 FR-60 要求"检查器与诊断的高度比例可调"，权重正是它的推广形式。
- *
- * 两种模式共用一个组件：拖拽逻辑（命中测试、插入位、跨栏移动）只该有一份实现。
+ * 与左栏共用 `sidebar-drop.ts` 的落点判定：拖拽逻辑只该有一份实现。
  */
 
-import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useRef, useState, type ReactNode } from 'react';
 import {
   DEFAULT_CARDS,
   DEFAULT_RIGHT_WEIGHTS,
   MIN_PANE_PX,
-  insertionIndex,
   weightsFromBoundary,
   type SidebarSide,
 } from '../lib/panels';
 import { Icon, uiIcon } from '../lib/icons';
+import { registerSidebar, resolveSidebarDrop } from './sidebar-drop';
 import { useApp } from '../state/store';
 
 /** 拖动启动阈值：小于它的位移算"点击标题栏"（折叠 / 展开） */
@@ -44,16 +40,12 @@ type KeyboardMoveIntent =
   | { kind: 'reorder'; direction: 'up' | 'down' }
   | { kind: 'side'; side: SidebarSide };
 
-/** 两个侧栏栈的 DOM 引用：跨栏拖拽要拿对方的卡片几何做命中测试 */
-const stackElements = new Map<SidebarSide, HTMLElement>();
-
 const CARD_LABEL: Record<string, string> = Object.fromEntries(
   DEFAULT_CARDS.map((card) => [card.id, card.title]),
 );
 
 export interface SidebarStackProps {
   side: SidebarSide;
-  mode: 'flow' | 'weighted';
   renderCard: (cardId: string) => ReactNode;
   /** 标题栏右侧的小字说明（缺省不显示） */
   cardHint?: (cardId: string) => string | undefined;
@@ -61,7 +53,7 @@ export interface SidebarStackProps {
   cardActions?: (cardId: string) => ReactNode;
 }
 
-export function SidebarStack({ side, mode, renderCard, cardHint, cardActions }: SidebarStackProps) {
+export function SidebarStack({ side, renderCard, cardHint, cardActions }: SidebarStackProps) {
   const layout = useApp((s) => s.uiLayout);
   const draggingCard = useApp((s) => s.draggingCard);
   const dropTarget = useApp((s) => s.cardDropTarget);
@@ -86,50 +78,8 @@ export function SidebarStack({ side, mode, renderCard, cardHint, cardActions }: 
   } | null>(null);
   const [dragging, setDragging] = useState(false);
 
-  useEffect(() => {
-    const element = rootRef.current;
-    if (!element) return;
-    stackElements.set(side, element);
-    return () => {
-      stackElements.delete(side);
-    };
-  }, [side]);
-
-  const ids = side === 'left' ? layout.left : layout.right;
+  const ids = layout.right;
   const expandedIds = ids.filter((id) => !layout.collapsed[id]);
-
-  /**
-   * 指针位置 → 落点（哪一侧、第几格）。
-   *
-   * 插入位走 `insertionIndex` 的"中线比较"规则，并且**把正在拖的那张卡片排除在外** ——
-   * 它还在原位（半透明），但松手后会被移走，所以序号要按"移走之后"的列表算。
-   */
-  const resolveDrop = useCallback(
-    (cardId: string, clientX: number, clientY: number): { side: SidebarSide; index: number } | null => {
-      for (const candidate of ['left', 'right'] as SidebarSide[]) {
-        const element = stackElements.get(candidate);
-        if (!element) continue;
-        const rect = element.getBoundingClientRect();
-        /*
-         * 命中的判定必须**同时看 X 与 Y**：两个侧栏栈的纵向范围几乎一样高，
-         * 只看 Y 的话指针一离开左栏就仍然"落在左栏里"，跨栏拖动永远走不到右栏
-         * （端到端脚本抓到的就是这个：拖到右栏后卡片原地不动）。
-         * 横向留 8px 宽容度，纵向留一点，方便"贴着边缘松手"。
-         */
-        if (clientX < rect.left - 8 || clientX > rect.right + 8) continue;
-        if (clientY < rect.top - 8 || clientY > rect.bottom + 8) continue;
-        const boxes = [...element.querySelectorAll<HTMLElement>('[data-card-header]')]
-          .filter((header) => header.dataset['cardId'] !== cardId)
-          .map((header) => {
-            const box = header.getBoundingClientRect();
-            return { top: box.top, height: box.height };
-          });
-        return { side: candidate, index: insertionIndex(clientY, boxes) };
-      }
-      return null;
-    },
-    [],
-  );
 
   const onHeaderPointerDown = (cardId: string) => (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -154,7 +104,7 @@ export function SidebarStack({ side, mode, renderCard, cardHint, cardActions }: 
       setDragging(true);
       beginCardDrag(drag.cardId, side);
     }
-    drag.target = resolveDrop(drag.cardId, event.clientX, event.clientY);
+    drag.target = resolveSidebarDrop(drag.cardId, event.clientX, event.clientY);
     setCardDropTarget(drag.target);
   };
 
@@ -203,34 +153,27 @@ export function SidebarStack({ side, mode, renderCard, cardHint, cardActions }: 
 
   return (
     <div
-      ref={rootRef}
+      ref={(element) => {
+        rootRef.current = element;
+        registerSidebar(side, element);
+      }}
       data-card-stack={side}
-      data-stack-mode={mode}
-      className={
-        mode === 'weighted'
-          ? 'flex min-h-0 flex-1 flex-col'
-          : 'flex min-h-0 flex-1 flex-col overflow-y-auto'
-      }
+      data-stack-mode="weighted"
+      className="flex min-h-0 flex-1 flex-col"
     >
       {ids.map((cardId, index) => {
         const collapsed = Boolean(layout.collapsed[cardId]);
         const isDragged = draggingCard?.cardId === cardId;
         const weight = layout.weights[cardId] ?? 1;
         const nextExpanded = expandedIds[expandedIds.indexOf(cardId) + 1];
-        const showSeparator = mode === 'weighted' && !collapsed && nextExpanded !== undefined;
+        const showSeparator = !collapsed && nextExpanded !== undefined;
 
         return (
           <Fragment key={cardId}>
             {indicator(index)}
             <div
-              style={
-                mode === 'weighted' && !collapsed ? { flexGrow: weight, flexBasis: 0 } : undefined
-              }
-              className={
-                mode === 'weighted' && !collapsed
-                  ? 'flex min-h-0 flex-col'
-                  : 'flex shrink-0 flex-col'
-              }
+              style={!collapsed ? { flexGrow: weight, flexBasis: 0 } : undefined}
+              className={!collapsed ? 'flex min-h-0 flex-col' : 'flex shrink-0 flex-col'}
             >
               <CardChrome
                 cardId={cardId}
@@ -340,6 +283,8 @@ function CardChrome({
       }`}
     >
       <div
+        data-drop-item
+        data-drop-id={cardId}
         data-card-header
         data-card-id={cardId}
         role="button"

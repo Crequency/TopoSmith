@@ -1,27 +1,25 @@
 /**
- * 卡片内容登记表（FR-70）
+ * 页面内容登记表（FR-70）
  *
- * 卡片可以在左右侧栏之间移动，所以"某张卡片渲染什么"**只能有一份定义**。
- * 之前左右侧栏各写一个 `renderCard`，结果是把「节点树」拖到右侧栏时，
- * 右侧栏的 `renderCard` 不认识这个 id，就落到了它的 else 分支上 —— 于是节点树的位置
- * 渲染出了「连通性诊断」的内容（端到端脚本只断言了顺序、没断言内容，没抓到；
- * 补了内容断言之后才露出来）。教训：**按 id 分发的地方，未知 id 必须显式处理**。
+ * 页面可以在左右侧栏之间搬家，所以"某张页面渲染什么"**只能有一份定义**。
+ * 之前左右侧栏各写一个 renderCard，结果是把「节点树」拖到右侧栏时，
+ * 右侧栏的 renderCard 不认识这个 id，落到了它的 else 分支上 —— 于是节点树的位置
+ * 渲染出了「连通性诊断」的内容（端到端脚本当时只断言了顺序、没断言内容，没抓到）。
+ * 教训：**按 id 分发的地方，未知 id 必须显式处理**。
  */
 
 import type { ReactNode } from 'react';
-import { PALETTE_CARD_PREFIX } from '../lib/panels';
 import { Diagnostics } from './Diagnostics';
 import { Inspector } from './Inspector';
 import { NodeTree } from './NodeTree';
-import { PaletteGroup } from './Palette';
+import { Palette } from './Palette';
 import { useApp } from '../state/store';
 
-/** 卡片内容：id → 组件；不认识的 id 明确报出一条提示，而不是"渲染成别的卡片" */
+/** 页面内容：id → 组件；不认识的 id 明确报出一条提示，而不是"渲染成别的页面" */
 export function renderSidebarCard(cardId: string): ReactNode {
-  if (cardId.startsWith(PALETTE_CARD_PREFIX)) {
-    return <PaletteGroup groupId={cardId.slice(PALETTE_CARD_PREFIX.length)} />;
-  }
   switch (cardId) {
+    case 'palette':
+      return <Palette />;
     case 'tree':
       return <NodeTree />;
     case 'inspector':
@@ -33,13 +31,11 @@ export function renderSidebarCard(cardId: string): ReactNode {
     case 'diagnostics':
       return <Diagnostics />;
     default:
-      return (
-        <p className="px-3 py-2 text-[11px] text-slate-500">未知卡片「{cardId}」。</p>
-      );
+      return <p className="px-3 py-2 text-[11px] text-slate-500">未知页面「{cardId}」。</p>;
   }
 }
 
-/** 卡片标题栏右侧的小字说明 */
+/** 页面标题的补充说明（右栏面板标题栏右侧那行小字） */
 export function sidebarCardHint(cardId: string): string | undefined {
   switch (cardId) {
     case 'tree':
@@ -51,7 +47,7 @@ export function sidebarCardHint(cardId: string): string | undefined {
   }
 }
 
-/** 卡片标题栏里的动作按钮（诊断卡：清空 DNS 缓存） */
+/** 面板标题栏里的动作按钮（诊断面板：清空 DNS 缓存） */
 export function SidebarCardActions({ cardId }: { cardId: string }): ReactNode {
   const clearDnsCache = useApp((s) => s.clearDnsCache);
   const cacheSize = useApp((s) => s.diag.cache.size);
