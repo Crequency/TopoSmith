@@ -222,7 +222,11 @@ export function computeBandwidth(
     ok: true,
     summary:
       `可达，瓶颈 ${formatSpeed(bottleneck)}，单向时延约 ${oneWayMs.toFixed(3)} ms，` +
-      `单流有效吞吐约 ${formatSpeed(effective)}。`,
+      `单流有效吞吐约 ${formatSpeed(effective)}。` +
+      // 环路会让"瓶颈 / 吞吐"这两个数字失去意义：真机上环内链路已被广播帧占满
+      (tr.steps.some((s) => s.code === 'L2_LOOP')
+        ? '（注意：路径所在广播域存在二层环路，这两个数字是按「没有风暴」算出来的估计值，真机上不成立）'
+        : ''),
     steps,
     hops: tr.hops,
     metrics,

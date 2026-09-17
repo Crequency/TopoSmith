@@ -221,6 +221,13 @@ interface AppState {
   ) => void;
   removePort: (deviceId: string, portId: string) => void;
   patchCable: (cableId: string, patch: Partial<Cable>) => void;
+  /**
+   * 把"与对端之间的链路"整体设为 / 解除链路聚合（FR-66）。
+   *
+   * 聚合是**一对设备之间的组**，所以一次改的是同对端的所有线缆 ——
+   * 一根线谈不上聚合，只改一根还会留下"孤零零的聚合成员"这种坏数据。
+   */
+  setBonded: (cableId: string, bonded: boolean) => void;
   removeCable: (cableId: string) => void;
   deleteSelection: () => void;
   alignSelection: (mode: AlignMode) => void;
@@ -1001,6 +1008,21 @@ export const useApp = create<AppState>((set, get) => {
           if (cable) Object.assign(cable, patch);
         },
         { label: '修改线缆', mergeKey: `cable:${cableId}` },
+      ),
+
+    setBonded: (cableId, bonded) =>
+      mutate(
+        (draft) => {
+          const target = draft.cables.find((cable) => cable.id === cableId);
+          if (!target) return;
+          const pair = [target.a.deviceId, target.b.deviceId].sort().join('→');
+          for (const cable of draft.cables) {
+            if ([cable.a.deviceId, cable.b.deviceId].sort().join('→') !== pair) continue;
+            if (bonded) cable.bonded = true;
+            else delete cable.bonded;
+          }
+        },
+        { label: bonded ? '设为链路聚合' : '解除链路聚合' },
       ),
 
     removeCable: (cableId) => {

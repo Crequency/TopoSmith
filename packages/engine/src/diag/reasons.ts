@@ -27,6 +27,8 @@ export type ReasonCode =
   | 'LINK_SPEED_LIMITED'
   | 'LINK_SPEED_NEGOTIATED'
   | 'WIFI_SHARED_MEDIUM'
+  | 'L2_LOOP'
+  | 'BROADCAST_STORM'
   | 'KNOWN_SIMPLIFICATION'
   /* ── 失败 ── */
   | 'DST_INVALID'
@@ -57,6 +59,8 @@ export const REASON_TITLE: Partial<Record<ReasonCode, string>> = {
   LINK_SPEED_LIMITED: '链路降速（线缆能力限制）',
   LINK_SPEED_NEGOTIATED: '链路按较低速率协商',
   WIFI_SHARED_MEDIUM: '无线为共享半双工介质',
+  L2_LOOP: '检测到二层环路',
+  BROADCAST_STORM: '广播风暴风险',
   KNOWN_SIMPLIFICATION: '已知简化',
   DST_INVALID: '目标地址无法解析',
   SRC_MISSING: '源设备不存在',

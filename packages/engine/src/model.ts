@@ -24,6 +24,7 @@ import { inSubnet, ipToString, networkAddress, parseIp } from './ip';
 import type { ReasonCode } from './diag/reasons';
 import { dhcpLease, type LeaseAttempt } from './dhcp';
 import { firstConnectedPortId, portKey } from './graph';
+import { scanL2Loops, type L2Loop } from './l2/loop';
 
 /* ────────────────────────────── 派生链路 ────────────────────────────── */
 
@@ -80,6 +81,15 @@ export interface World {
   addresses: Map<string, Address[]>;
   /** DHCP 尝试结果（含失败原因），用于诊断解释 */
   leases: Map<string, LeaseAttempt>;
+  /**
+   * 二层环路（代表性的环，见 `l2/loop.ts`）。
+   *
+   * 建世界时算一次：环路会同时影响**诊断结论的置信度**（按最短路近似）与
+   * **线缆告警**（每条卷进环路的线缆都会被挂上 warn），两处都需要它。
+   */
+  loops: L2Loop[];
+  /** 卷进任何环路的线缆 id（完整集合，未受代表环数量上限影响） */
+  loopLinkIds: Set<string>;
 }
 
 /* ────────────────────────────── 设备行为 ────────────────────────────── */
@@ -270,6 +280,8 @@ export function buildWorld(scenario: Scenario): World {
   const linksByPort = new Map<string, DerivedLink[]>();
   const addresses = new Map<string, Address[]>();
   const leases = new Map<string, LeaseAttempt>();
+  const loops: L2Loop[] = [];
+  const loopLinkIds = new Set<string>();
 
   const world: World = {
     scenario,
@@ -280,6 +292,8 @@ export function buildWorld(scenario: Scenario): World {
     linksByPort,
     addresses,
     leases,
+    loops,
+    loopLinkIds,
   };
 
   // 1. 派生链路
@@ -336,6 +350,32 @@ export function buildWorld(scenario: Scenario): World {
         },
       ]);
     }
+  }
+
+  /*
+   * 4. 二层环路扫描（FR-67 / D-51）
+   *
+   * 放在地址之后：环路本身只依赖拓扑与端口 VLAN，但给线缆挂告警需要
+   * "这个环波及了哪些设备"（广播域范围），而那需要 walked 过的链路已就绪。
+   * 树形拓扑只付一次 Tarjan 的代价，没有环就什么都不做。
+   */
+  const scan = scanL2Loops(world);
+  world.loops = scan.loops;
+  world.loopLinkIds = scan.loopLinkIds;
+  for (const link of links) {
+    if (!scan.loopLinkIds.has(link.id)) continue;
+    const loop = scan.loops.find((item) => item.linkIds.includes(link.id));
+    link.issues.push({
+      code: 'L2_LOOP',
+      level: 'warn',
+      text: loop
+        ? `这条链路卷进了 VLAN ${loop.vlan} 的二层环路：${loop.label}。` +
+          '没有 STP 也没有链路聚合时，广播帧会沿环无限循环（以太网帧没有 TTL）：' +
+          `环内最慢的一段 ${formatSpeed(loop.slowestMbps)} 会先被打满，` +
+          `该广播域内 ${loop.affected.size} 台设备一起受影响。` +
+          '要么把并联的线缆做成链路聚合，要么拆掉多余的那一根。'
+        : '这条链路卷进了二层环路（本场景环路较多，未逐条展开）。',
+    });
   }
 
   return world;
