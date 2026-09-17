@@ -22,7 +22,6 @@ export function Diagnostics() {
   const setDiagDst = useApp((s) => s.setDiagDst);
   const setDnsName = useApp((s) => s.setDnsName);
   const runDiag = useApp((s) => s.runDiag);
-  const clearDnsCache = useApp((s) => s.clearDnsCache);
 
   // 可选源：有地址的设备优先（没有地址的设备作为源只会得到"无地址"结论）
   const sourceOptions = useMemo(
@@ -56,19 +55,7 @@ export function Diagnostics() {
   const stale = diag.result !== null && diag.ranOn !== scenario.updatedAt;
 
   return (
-    <section className="flex min-h-0 flex-col border-t border-slate-800">
-      <header className="flex shrink-0 items-center justify-between border-b border-slate-800 bg-slate-900/80 px-3 py-2">
-        <h2 className="text-xs font-semibold tracking-wide text-slate-300">连通性诊断</h2>
-        <button
-          type="button"
-          onClick={clearDnsCache}
-          className="text-[10px] text-slate-500 underline decoration-dotted hover:text-slate-300"
-          title="清空后下次解析会走完整链路（教学演示用）"
-        >
-          DNS 缓存 {diag.cache.size} 条 · 清空
-        </button>
-      </header>
-
+    <section className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="flex flex-col gap-2 border-b border-slate-800 p-3">
           {diag.fromSelection && (

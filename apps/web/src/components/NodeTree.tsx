@@ -41,18 +41,10 @@ export function NodeTree() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="shrink-0 border-b border-slate-800 px-3 py-2">
-        <h2 className="text-xs font-semibold tracking-wide text-slate-300">
-          节点树
-          <span className="ml-1.5 font-normal text-slate-500">
-            {rows.length === total ? `${total} 个节点` : `${rows.length}/${total}`}
-          </span>
-        </h2>
-        <p className="mt-0.5 text-[10px] leading-snug text-slate-500">
-          点击选中，双击定位到画布；机柜下的缩进行是柜内设备
-        </p>
-      </header>
-
+      {/*
+        标题与说明在卡片标题栏里（FR-70）：这里只留"过滤 / 排序 / 计数"这些**操作**，
+        以及列表本身。列表给一个高度上限，否则 810 行的场景会把整列卡片顶到看不见底。
+      */}
       <div className="flex shrink-0 flex-col gap-1.5 border-b border-slate-800 px-3 py-2">
         <input
           type="text"
@@ -84,12 +76,13 @@ export function NodeTree() {
           </button>
         </div>
         <p className="text-[10px] text-slate-600">
-          当前：按{nodeSortLabel(sortKey)}
-          {direction === 'asc' ? '升序' : '降序'}
+          {rows.length === total ? `${total} 个节点` : `${rows.length}/${total} 个节点`} · 按
+          {nodeSortLabel(sortKey)}
+          {direction === 'asc' ? '升序' : '降序'} · 点击选中，双击定位
         </p>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="max-h-[42vh] min-h-0 flex-1 overflow-y-auto">
         {rows.length === 0 ? (
           <p className="p-3 text-[11px] leading-relaxed text-slate-500">
             {total === 0 ? '画布上还没有节点，先从「设备目录」拖入设备。' : '没有匹配的节点。'}

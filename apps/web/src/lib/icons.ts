@@ -23,6 +23,7 @@ import {
   AlignVerticalDistributeCenter,
   Cable,
   Cctv,
+  ChevronRight,
   CircuitBoard,
   Cloud,
   Cpu,
@@ -45,6 +46,7 @@ import {
   Smartphone,
   CircleHelp,
   Rotate3d,
+  Search,
   Tablet,
   Undo2,
   Warehouse,
@@ -126,7 +128,9 @@ export type UiIconName =
   | 'undo'
   | 'redo'
   | 'flip'
-  | 'help';
+  | 'help'
+  | 'chevron-right'
+  | 'search';
 
 const UI_ICON: Record<UiIconName, IconNode> = {
   'align-left': AlignStartVertical,
@@ -144,6 +148,8 @@ const UI_ICON: Record<UiIconName, IconNode> = {
   redo: Redo2,
   flip: Rotate3d, // 转动观察角度（不用相机图标）
   help: CircleHelp,
+  'chevron-right': ChevronRight,
+  search: Search,
 };
 
 export function uiIcon(name: UiIconName): IconNode {
