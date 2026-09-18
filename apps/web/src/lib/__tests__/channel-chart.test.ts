@@ -162,7 +162,8 @@ describe('频段图', () => {
     expect(orthogonal.bars.map((bar) => bar.channel)).toEqual([44, 149]);
     expect(orthogonal.overlaps).toEqual([]);
     expect(orthogonal.hasInterference).toBe(false);
-    expect(channelTicks(orthogonal).length).toBeGreaterThan(2);
+    // 5G/6G 的横轴**只标有信号的信道**：均匀刻度会把上百格挤成一条黑线
+    expect(channelTicks(orthogonal)).toEqual([44, 149]);
 
     const c = radio('dev-c', 'AP-149-2', 300, {
       mode: 'ap',
@@ -194,6 +195,6 @@ describe('频段图', () => {
     const cellular = charts[1]!;
     expect(cellular.range).toEqual([0, 1]);
     expect(cellular.bars[0]?.names).toContain('5G 基站');
-    expect(channelTicks(cellular)).toEqual([0]);
+    expect(channelTicks(cellular)).toEqual([]);
   });
 });

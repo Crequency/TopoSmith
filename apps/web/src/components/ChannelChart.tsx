@@ -134,7 +134,7 @@ export function ChannelChart({ channels }: { channels: ChannelUsage[] }): ReactN
                 className="fill-slate-500"
                 style={{ fontSize: 8 }}
               >
-                {chart.band === 'cellular' ? '—' : channel}
+                {channel}
               </text>
             ))}
           </svg>

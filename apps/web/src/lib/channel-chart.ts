@@ -171,12 +171,24 @@ export function overlapSpans(curves: SpectrumCurve[]): OverlapSpan[] {
   return spans;
 }
 
-/** 横轴刻度：2.4G 逐信道，其余每 2–4 格标一个（避免挤成一团） */
+/**
+ * 横轴要标哪些信道号。
+ *
+ * 三个频段的轴不一样，是刻意的：
+ *  · 2.4G 跨度只有 14 格，**逐格标**，重叠图才读得出"差了几个信道"；
+ *  · 5G/6G 跨度上百格，均匀刻度会挤成一条黑线（实测过：29 个标签糊在一起）——
+ *    这里只标**真正有信号的信道**，那才是用户要看的数字；占用过多的极端场景隔一个标一个；
+ *  · 蜂窝没有信道号，不标。
+ */
 export function channelTicks(chart: BandChart): number[] {
-  const [min, max] = chart.range;
-  if (chart.band === 'cellular') return [0];
-  const step = max - min <= 16 ? 1 : 4;
-  const ticks: number[] = [];
-  for (let channel = min; channel <= max; channel += step) ticks.push(channel);
-  return ticks;
+  if (chart.band === 'cellular') return [];
+  if (chart.band === '2.4G') {
+    const [min, max] = chart.range;
+    const ticks: number[] = [];
+    for (let channel = min; channel <= max; channel += 1) ticks.push(channel);
+    return ticks;
+  }
+  const used = [...new Set(chart.bars.map((bar) => bar.channel))].sort((a, b) => a - b);
+  if (used.length > 8) return used.filter((_, index) => index % 2 === 0);
+  return used;
 }
