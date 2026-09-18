@@ -163,6 +163,7 @@ toposmith/
 |---|---|---|
 | GitHub Pages | `.github/workflows/ci.yml` 的 `deploy` 任务，取 `configure-pages` 的 `base_path` | 由 `BASE_PATH` 注入 |
 | 容器（Caddy） | `Dockerfile`（多阶段）+ `Caddyfile`：构建阶段 Node 22 + pnpm 跑 `pnpm build`，运行阶段 `caddy:2-alpine` 只做静态服务，**镜像里不含 Node** | 根路径；子路径用 `--build-arg BASE_PATH=/xxx/` |
+| 自建 Harbor | 推送到 `registry.services.nimatattic.net/crequency/toposmith`（tag = `package.json` 版本 + `latest`），用 `scripts/image-push.sh` 一键完成 | 同上（镜像内容与容器形态完全一致） |
 
 容器端口 **41006 = 开发服务器端口 31006 + 10000**（`PORT` 环境变量可覆盖，
 Caddyfile 与 `EXPOSE`/`HEALTHCHECK` 读的是同一个变量）。Caddyfile 的三条约定：

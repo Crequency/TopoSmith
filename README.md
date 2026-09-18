@@ -162,6 +162,14 @@ docker build -t toposmith:local .
 docker run --rm -p 41006:41006 toposmith:local      # 打开 http://127.0.0.1:41006/
 ```
 
+镜像已发布到自建 Harbor 的 **crequency** 项目（不是 dynecloud），版本号取自 `package.json`：
+
+```bash
+docker run --rm -p 41006:41006 registry.services.nimatattic.net/crequency/toposmith:0.1.0
+scripts/image-push.sh            # 构建 + 推送（默认 tag = package.json 版本 + latest）
+scripts/image-push.sh 0.2.0      # 指定 tag
+```
+
 **端口 = 开发服务器端口 + 10000：`31006 → 41006`**（`PORT` 环境变量可覆盖，Caddyfile 读的是同一个变量）。
 子路径部署时把基路径作为构建参数传进去：
 
