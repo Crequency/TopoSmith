@@ -1,0 +1,47 @@
+# TopoSmith 静态站点（容器里由 Caddy 提供）
+#
+# 端口：**开发服务器端口 + 10000**（31006 → 41006）；`PORT` 环境变量可覆盖。
+# 站点根：容器里是 `/srv`（Dockerfile 把构建产物放到那里）；`SITE_ROOT` 可覆盖，
+# 于是同一份配置既能跑在容器里，也能在本地直接对着 apps/web/dist 验证。
+#
+# 关于 TLS：这里只监听一个高位端口、跑在容器内网，HTTPS 交给外层反向代理/网关去做；
+# 因此不用 Caddy 的自动 HTTPS（它需要域名与 80/443）。若要直连公网，把站点地址换成
+# 域名即可，Caddy 会自动申请证书。
+{
+	# 静态站点不需要管理 API 与配置持久化：关掉就少两个攻击面
+	admin off
+	persist_config off
+}
+
+:{$PORT:41006} {
+	root * {$SITE_ROOT:/srv}
+	encode zstd gzip
+
+	header {
+		# 按内容嗅探类型是 XSS 的老路子，明确禁掉
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+
+	# ① 构建产物（/assets/index-<hash>.js 这类带内容哈希的文件）：
+	#    内容一变文件名就变，可以长期缓存；**只认真实文件**，缺失就 404。
+	#
+	#    为什么必须单独一个 handle：如果让 /assets/* 也走 SPA 回退，缺失的资源会返回
+	#    index.html（200 + text/html），浏览器把它当 JS 解析后抛 "Unexpected token '<'" ——
+	#    这种报错极难定位。而 Caddy 的 try_files 并不接受"命名匹配器"当参数
+	#    （`try_files @assets {path}` 会被当成"试两个文件名"），所以这里用 handle 分支。
+	@assets path /assets/*
+	handle @assets {
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	# ② 其余路径：入口与清单每次回源校验（否则发版后用户会拿着旧 index.html 去请求
+	#    已删除的资源），路径不存在时回退到入口，保证深链接与刷新可用。
+	handle {
+		@entry path / /index.html /manifest.webmanifest /favicon.svg
+		header @entry Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+}

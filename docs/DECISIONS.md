@@ -1015,3 +1015,31 @@
 - **代价**：一次性改名（import 路径 + 清单 + 文档），以及"包名与目录名不一致"需要在
   README 与架构文档里各说明一句。
 - **状态**：✅ 生效（2026-09-17）；验证：`pnpm check` 全绿（45 + 221 项）、构建与浏览器套件全通过。
+
+## D-55 容器化：多阶段镜像 + Caddy，端口取"开发端口 + 10000"
+
+- **决策**：
+  1. **多阶段镜像**：构建阶段 `node:22-alpine`（与 CI 的 Node 版本一致）+ `pnpm install
+     --frozen-lockfile` + `pnpm build`；运行阶段 `caddy:2-alpine` 只做静态文件服务。
+     最终镜像里**没有 Node**、没有 `node_modules`，攻击面只剩一个静态服务器。
+  2. **用 Caddy 而不是 nginx**：配置文件就是需求本身（4 条路由规则），
+     自动 gzip/zstd、默认安全头、可读性远高于 nginx 的 location 块；
+     镜像体积与 nginx 同量级。
+  3. **端口 41006 = 开发端口 31006 + 10000**：两条端口不会撞车，
+     看到 41006 就知道它对应哪个项目的哪个服务；`PORT` 环境变量仍可覆盖
+     （Caddyfile 与镜像的 `EXPOSE`/`HEALTHCHECK` 读同一个变量，改一处即可）。
+  4. **容器内不做 TLS**：只监听高位端口，证书交给外层反向代理/网关；
+     要直连公网时把站点地址从 `:41006` 换成域名，Caddy 会自动申请证书。
+  5. **`/assets/*` 只认真实文件**：缺失就 404，**不参与 SPA 回退** ——
+     否则缺失的 JS 会返回 `index.html`（200 + `text/html`），浏览器报
+     "Unexpected token '<'"，是极难定位的一类故障。
+     （实现上必须用 `handle` 分支：Caddy 的 `try_files` **不接受命名匹配器当参数**，
+     `try_files @assets {path}` 会被当成"试两个文件名"—— 这一点是实机请求才试出来的。）
+  6. **缓存策略**：`/assets/*`（带内容哈希）`immutable` 一年；入口与清单 `no-cache`，
+     否则发版后用户会拿着旧 `index.html` 去请求已删除的资源。
+- **代价**：多维护两个文件（`Dockerfile` / `Caddyfile`）与一条 `.dockerignore`；
+  容器里没有 Node，因此不能在镜像内做"运行时改配置"这类操作（本来也不需要）。
+- **验证**：本机 Docker 守护进程不可用时，用**同一份 Caddyfile、同一个端口**直接对
+  `apps/web/dist` 起 Caddy 实测（`docs` 里的静态部分与真实请求都对过）；
+  构建阶段的命令（`pnpm install --frozen-lockfile` + `pnpm build`）在宿主机跑通。
+- **状态**：✅ 生效（2026-09-17）。
