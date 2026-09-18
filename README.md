@@ -162,6 +162,22 @@ docker build -t toposmith:local .
 docker run --rm -p 41006:41006 toposmith:local      # 打开 http://127.0.0.1:41006/
 ```
 
+**用 docker-compose**（本地测试/自托管）：容器内端口固定 41006，宿主端口由**映射**决定 ——
+换宿主端口不必改镜像、也不用重推：
+
+```bash
+docker compose up -d --build                  # 本地构建并起（宿主 41006）
+TOPOSMITH_PORT=8080 docker compose up -d      # 映射到任意宿主端口
+docker compose pull && docker compose up -d   # 直接跑 Harbor 上的镜像
+docker compose down
+```
+
+映射到 `31006` 会与开发服务器抢端口（先 `devctl stop toposmith dev`，或换个宿主端口）。
+compose 里显式清空了 `HTTP_PROXY` 等变量：Docker 会把宿主代理注入容器，而镜像里的
+busybox `wget` **不认 `NO_PROXY`**，会让**镜像自带的 HEALTHCHECK** 误报
+（探针把 `127.0.0.1:41006` 发给代理 → 502 → 容器一直停在 `starting`，而宿主 `curl` 却是 200）。
+静态站点不出网，清掉最省事；治本的一行改动在 Dockerfile（探针加 `wget -Y off` 或改 `nc -z`）。
+
 镜像已发布到自建 Harbor 的 **crequency** 项目（不是 dynecloud），版本号取自 `package.json`：
 
 ```bash
@@ -199,8 +215,9 @@ toposmith/
 ├─ docs/                需求、领域模型、目录表、架构、引擎、诊断契约、路线图、决策记录
 ├─ assets/brand/        标识源文件：mark.svg（图形）+ 两种主题的字标
 ├─ scripts/             构建脚本：品牌产物、README 截图（共用 playwright 加载器）
-├─ Dockerfile           多阶段镜像：Node 构建 → Caddy 静态服务（端口 41006）
+├─ Dockerfile           多阶段镜像：Node 构建 → Caddy 静态服务（容器端口 41006）
 ├─ Caddyfile            静态站点配置：SPA 回退 / 资源长缓存 / 入口不缓存
+├─ docker-compose.yml   本地/自托管编排：宿主端口 → 容器 41006 的映射可覆盖
 ├─ packages/
 │  ├─ schema/           类型定义 + 导入校验（输入契约）
 │  ├─ catalog/          设备 / 端口 / 线缆 / 速率目录（纯数据）

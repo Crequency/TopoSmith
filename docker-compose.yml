@@ -1,0 +1,47 @@
+# TopoSmith 本地/自托管运行（Docker Compose）
+#
+# 只是"怎么把镜像跑起来"的编排，**不改变镜像本身**：
+#   · 容器内端口固定 41006（= 开发端口 31006 + 10000，见 Dockerfile / Caddyfile）；
+#   · 宿主端口由映射决定，默认 41006，可用 TOPOSMITH_PORT 改 ——
+#     换宿主端口不需要碰 Dockerfile/Caddyfile，也不用重推镜像。
+#
+# 用法：
+#   docker compose up -d --build              # 本地构建并起（宿主 41006）
+#   TOPOSMITH_PORT=31006 docker compose up -d # 映射到别的宿主端口（例如开发端口）
+#   docker compose pull && docker compose up -d   # 直接跑 Harbor 上的镜像
+#   docker compose down                       # 停掉
+#
+# 注意：映射到 31006 会与 `devctl start toposmith dev` 起的开发服务器抢端口 ——
+# 想让容器占用 31006，先停开发服务器。
+
+services:
+  toposmith:
+    # 两个来源都写上：本地改动用 `up --build` 构建；想跑已发布版本用 `pull`
+    build: .
+    image: registry.services.nimatattic.net/crequency/toposmith:latest
+
+    container_name: toposmith
+
+    ports:
+      # 左 = 宿主端口（可覆盖），右 = 容器内端口（固定 41006）
+      - "${TOPOSMITH_PORT:-41006}:41006"
+
+    environment:
+      # Caddyfile 读这个变量；与容器内端口保持一致即可，改它要同时改上面的右侧
+      PORT: "41006"
+
+      # 清掉被注入的代理变量 —— 这里不是"顺手关代理"，而是为了让**镜像自带的 HEALTHCHECK**
+      # 真的能通过：Docker 会把宿主/守护进程的代理配置注入容器（HTTP_PROXY=…），
+      # 而 caddy:2-alpine 里的 busybox wget **不认 NO_PROXY**，于是探针把
+      # http://127.0.0.1:41006/ 发给代理、代理回 502 Bad Gateway，容器就永远停在
+      # `health: starting`（宿主 curl 却是 200，很有迷惑性）。
+      # 静态站点不需要出网，清空这几个变量既安全又让探针不经代理。
+      # （治本的一行改动在 Dockerfile：把探针换成 `wget -q -Y off --spider …` 或
+      #   `nc -z 127.0.0.1 ${PORT:-41006}`；这里按"不改镜像"的要求用编排层绕过。）
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      http_proxy: ""
+      https_proxy: ""
+
+    # 静态站点是无状态的：重启即恢复
+    restart: unless-stopped
