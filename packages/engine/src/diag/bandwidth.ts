@@ -74,6 +74,12 @@ export function computeBandwidth(
   let bottleneck = Number.POSITIVE_INFINITY;
   let bottleneckLabel = '';
   let hasWireless = false;
+  /**
+   * 无线段提供方是蜂窝基站还是 WiFi AP —— 只影响文案。
+   * 共享介质的**算法**对两者完全相同（空口都是所有人分一份），
+   * 但"同一 AP 下的客户端数"套在蜂窝上会让用户误以为模型没考虑蜂窝。
+   */
+  let wirelessCellular = false;
   let wirelessConcurrency = 1;
   let wirelessCap = Number.POSITIVE_INFINITY;
   let wirelessCapLabel = '';
@@ -133,6 +139,9 @@ export function computeBandwidth(
       if (family === 'wireless') {
         hasWireless = true;
         const peerDeviceId = hop.outPortId ? wifiPeer(world, hop.deviceId, hop.outPortId) : undefined;
+        if (peerDeviceId && world.devices.get(peerDeviceId)?.kind === 'base-station') {
+          wirelessCellular = true;
+        }
         const concurrency = peerDeviceId ? associationsOn(world, peerDeviceId) : 1;
         wirelessConcurrency = Math.max(wirelessConcurrency, concurrency);
         // 无线段的有效能力 = 协商速率 × 半双工/共享效率 ÷ 并发客户端数
@@ -187,15 +196,22 @@ export function computeBandwidth(
   ];
 
   if (hasWireless) {
+    /*
+     * 共享介质这条结论对 WiFi 与蜂窝同样成立，但说法要分开：
+     * 蜂窝的"单用户峰值 1 Gbps"最容易被当成"我用 5G 就有 1G"，
+     * 而真相是同一小区里所有终端分同一份空口资源。
+     */
+    const text = wirelessCellular
+      ? `路径包含蜂窝段，空口是彻底的共享介质：${wirelessCapLabel ?? '蜂窝段'}` +
+        `。有效吞吐按「协商速率 × ${WIFI_EFFICIENCY} ÷ 同一小区内的终端数」估算 —— ` +
+        `蜂窝速率是**单用户峰值**，同一小区（同一基站）下的终端越多，每台能分到的越少。`
+      : `路径包含无线段，且无线是共享半双工介质：${wirelessCapLabel ?? '无线段'}` +
+        `。有效吞吐按「协商速率 × ${WIFI_EFFICIENCY} ÷ 并发客户端数」估算，` +
+        `同一 AP 下同时使用的客户端越多，每台能分到的越少。`;
     steps.push(
-      mkStep(
-        'WIFI_SHARED_MEDIUM',
-        'warn',
-        `路径包含无线段，且无线是共享半双工介质：${wirelessCapLabel ?? '无线段'}` +
-          `。有效吞吐按「协商速率 × ${WIFI_EFFICIENCY} ÷ 并发客户端数」估算，` +
-          `同一 AP 下同时使用的客户端越多，每台能分到的越少。`,
-        { data: { wirelessConcurrency, wirelessCapMbps: wirelessCap } },
-      ),
+      mkStep('WIFI_SHARED_MEDIUM', 'warn', text, {
+        data: { wirelessConcurrency, wirelessCapMbps: wirelessCap },
+      }),
     );
   }
 
