@@ -416,6 +416,13 @@ export interface DrawParams {
   /** 被选中的覆盖区域所属设备：画手柄与尺寸读数（多个时都画） */
   coverageSelectedIds?: string[];
   /**
+   * 拖拽连线时橡皮筋的末端（世界坐标，FR-79）。
+   * 非空即表示"正在从某个端口拖线"，末端跟着指针走。
+   */
+  linkPreview?: Point | null;
+  /** 无线测量点（世界坐标，FR-80）：画一个十字标记，让用户知道量的是哪一点 */
+  measurePoint?: Point | null;
+  /**
    * 本帧的连线路径缓存（FR-56）。
    *
    * 一条连线在一帧里要被问两次路径（线体趟 + 标签趟），800 条就是 1600 次
@@ -504,6 +511,10 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawParams): vo
   for (const link of world.links) drawCable(ctx, frameParams, link, 'label');
   if (params.flow) drawFlow(ctx, params, params.flow, 'over');
 
+  // ── 拖拽连线的橡皮筋与无线测量标记（画在最上层，不被卡片盖住）
+  drawLinkDraft(ctx, params);
+  drawMeasureMarker(ctx, params);
+
   // ── 框选矩形
   if (params.marquee) {
     const topLeft = worldToScreen(camera, params.marquee.x, params.marquee.y);
@@ -519,6 +530,91 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawParams): vo
     ctx.restore();
   }
 
+  ctx.restore();
+}
+
+/* ────────────────────────────── 拉线预览与测量标记 ────────────────────────────── */
+
+/** 端口图元的中心（世界坐标）：拉线预览要从端口出发，而不是从卡片中心 */
+function portCenterOf(
+  world: World,
+  deviceId: string,
+  portId: string,
+): { x: number; y: number } | null {
+  const device = world.devices.get(deviceId);
+  if (!device) return null;
+  const rack = device.mount ? world.devices.get(device.mount.rackId) : undefined;
+  const side = deviceSide(device, rack?.rack?.flipped ?? false);
+  const glyph = visiblePortGlyphs(device, side).find((item) => item.port.id === portId);
+  return glyph ? { x: glyph.centerX, y: glyph.centerY } : null;
+}
+
+/**
+ * 拖拽连线的橡皮筋（FR-79）。
+ *
+ * 从起点端口画一条虚线到指针，末端一个圆点。它是"手正抓着这根线"的唯一反馈 ——
+ * 没有它，拖拽与"点空白处"在画面上完全一样。目标端口的高亮仍然由
+ * `hoverPort` 那套逻辑负责（绘制与命中同源），因此"能不能松手"看着就很清楚。
+ */
+function drawLinkDraft(ctx: CanvasRenderingContext2D, params: DrawParams): void {
+  const { world, camera } = params;
+  const draft = params.linkDraft;
+  const to = params.linkPreview;
+  if (!draft || !to) return;
+  const from = portCenterOf(world, draft.deviceId, draft.portId);
+  if (!from) return;
+
+  const a = worldToScreen(camera, from.x, from.y);
+  const b = worldToScreen(camera, to.x, to.y);
+
+  ctx.save();
+  ctx.setLineDash([6, 4]);
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(56, 189, 248, 0.9)';
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y);
+  // 轻微下坠的二次曲线：比直线更像"一根被拉着的线"，也更容易与网格区分
+  const midX = (a.x + b.x) / 2;
+  const midY = (a.y + b.y) / 2 + Math.min(28, Math.hypot(b.x - a.x, b.y - a.y) * 0.12);
+  ctx.quadraticCurveTo(midX, midY, b.x, b.y);
+  ctx.stroke();
+
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(56, 189, 248, 0.95)';
+  ctx.beginPath();
+  ctx.arc(b.x, b.y, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** 无线测量点：一个十字准星 + 半透明光环，标明"量的是这里" */
+export function drawMeasureMarker(ctx: CanvasRenderingContext2D, params: DrawParams): void {
+  const point = params.measurePoint;
+  if (!point) return;
+  const { camera } = params;
+  const at = worldToScreen(camera, point.x, point.y);
+  const color = '#22d3ee';
+
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.fillStyle = 'rgba(34, 211, 238, 0.12)';
+  ctx.beginPath();
+  ctx.arc(at.x, at.y, 9, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  for (const [dx, dy] of [
+    [-14, 0],
+    [14, 0],
+    [0, -14],
+    [0, 14],
+  ] as const) {
+    ctx.moveTo(at.x + dx * 0.45, at.y + dy * 0.45);
+    ctx.lineTo(at.x + dx, at.y + dy);
+  }
+  ctx.stroke();
   ctx.restore();
 }
 

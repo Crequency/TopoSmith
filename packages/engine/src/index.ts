@@ -54,6 +54,8 @@ export { describeRouteTable, lookupRoute, routingTable } from './l3/routing';
 export type { RouteEntry, RouteKind } from './l3/routing';
 
 /* 地址分配与 DNS */
+export { formatDistanceM, measureWireless } from './wireless';
+export type { ChannelUsage, MeasuredSignal, SignalQuality, WirelessMeasurement } from './wireless';
 export { dhcpLease } from './dhcp';
 export type { LeaseAddress, LeaseAttempt } from './dhcp';
 export { DNS_DEFAULT_TTL, chainToHops, resolveName } from './dns';

@@ -100,6 +100,50 @@ export function radioNominalMbps(standard?: RadioStandard, band?: WifiBand): num
   return wifiNominalMbps(standard, band);
 }
 
+/**
+ * 无线发射功率的典型值（dBm）—— **只用于"这一点能收到多强"的估算**，
+ * 不参与速率协商（协商只看制式标称值）。
+ *
+ * 取值口径：
+ *   WiFi AP / 家用网关   20 dBm（100 mW，法规与固件的常见上限）
+ *   WiFi 终端            15 dBm（手机/笔记本的典型值）
+ *   4G 宏站              43 dBm（20 W）
+ *   5G 中频微站          33 dBm（2 W，AAU 常见档）
+ */
+export const RADIO_TX_DBM: Record<RadioStandard, number> = {
+  '802.11n': 20,
+  '802.11ac': 20,
+  '802.11ax': 20,
+  '802.11be': 20,
+  lte: 43,
+  nr: 33,
+};
+
+/** 频段 → 代表频点（MHz）：信道未知时用它 */
+const BAND_CENTER_MHZ: Record<WifiBand, number> = { '2.4G': 2437, '5G': 5180, '6G': 5955 };
+/** 蜂窝制式的代表频点（MHz）：LTE Band 3 / NR n78，说明见测量面板的简化披露 */
+const CELLULAR_CENTER_MHZ: Record<CellularStandard, number> = { lte: 1800, nr: 3500 };
+
+/**
+ * 信道 → 频点（MHz），WiFi 三频段的编号规则各不相同：
+ *   2.4G：2407 + 5×信道（信道 14 是 2484，单独处理）
+ *   5G  ：5000 + 5×信道
+ *   6G  ：5950 + 5×信道
+ * 信道缺省时退回到该频段的代表频点 —— 面板上会标明是"代表频点"还是真实信道。
+ */
+export function radioChannelFrequencyMhz(
+  standard: RadioStandard,
+  band?: WifiBand,
+  channel?: number,
+): number {
+  if (isCellularStandard(standard)) return CELLULAR_CENTER_MHZ[standard];
+  const fallback = BAND_CENTER_MHZ[band ?? '5G'];
+  if (channel === undefined || !Number.isFinite(channel)) return fallback;
+  if ((band ?? '5G') === '2.4G') return channel === 14 ? 2484 : 2407 + 5 * channel;
+  if ((band ?? '5G') === '6G') return 5950 + 5 * channel;
+  return 5000 + 5 * channel;
+}
+
 export const RADIO_STANDARD_LABEL: Record<RadioStandard, string> = {
   '802.11n': '802.11n',
   '802.11ac': '802.11ac',

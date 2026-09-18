@@ -71,6 +71,8 @@ import {
   type CoverageHandle,
 } from '../lib/coverage';
 import { drawSignals, signalLinks } from './signals';
+import { ContextMenu, type ContextMenuItem } from '../components/ContextMenu';
+import { WirelessMeasurePanel } from '../components/WirelessMeasure';
 import { SpeedLegend } from '../components/SpeedLegend';
 import { ShortcutDialog } from '../components/ShortcutDialog';
 import { deviceSide, hasRearPorts, visiblePortGlyphs } from '../lib/ports';
@@ -170,7 +172,7 @@ function idsLabel(ids: string[]): string {
   return ids.length > 1 ? `移动 ${ids.length} 台设备` : '移动设备';
 }
 
-type DragMode = 'none' | 'pan' | 'device' | 'marquee' | 'label' | 'resize' | 'coverage';
+type DragMode = 'none' | 'pan' | 'device' | 'marquee' | 'label' | 'resize' | 'coverage' | 'link';
 
 interface DragState {
   mode: DragMode;
@@ -195,6 +197,8 @@ interface DragState {
   coverageHandle?: CoverageHandle;
   /** 抓取瞬间"指针方位角 − 扇形朝向"，拖朝向时用它保持不跳 */
   coverageGrabOffsetDeg?: number;
+  /** 从哪个端口开始拖的连线（FR-79） */
+  linkSource?: LinkDraft;
 }
 
 /** 超过这个屏幕像素距离才算拖动（否则视为单击） */
@@ -263,6 +267,12 @@ export function TopologyCanvas() {
   const [resizeDeviceId, setResizeDeviceId] = useState<string | null>(null);
   const [dragLabelId, setDragLabelId] = useState<string | null>(null);
   const [cursor, setCursor] = useState<Point | null>(null);
+  /** 拖拽连线时橡皮筋的末端（世界坐标）；null = 没有正在拖的连线（FR-79） */
+  const [linkPreview, setLinkPreview] = useState<Point | null>(null);
+  /** 右键上下文菜单（FR-80）：位置是容器内坐标，worldPoint 是它对应的世界点 */
+  const [menu, setMenu] = useState<{ x: number; y: number; world: Point } | null>(null);
+  /** 无线测量（FR-80）：点（世界坐标）+ 弹面板的锚点（容器内坐标） */
+  const [measure, setMeasure] = useState<{ point: Point; at: { x: number; y: number } } | null>(null);
   const [marquee, setMarquee] = useState<Box | null>(null);
   const [guides, setGuides] = useState<SnapGuides>(NO_GUIDES);
   const [size, setSize] = useState({ width: 800, height: 600 });
@@ -351,6 +361,9 @@ export function TopologyCanvas() {
         store.setLinkMode(false);
         store.clearSelection();
         setMarquee(null);
+        // 上下文菜单与测量面板也是"浮在画布上的东西"，Esc 应当一并收起
+        setMenu(null);
+        setMeasure(null);
       } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
         event.preventDefault();
         store.selectManyDevices(store.world.ordered.map((device) => device.id));
@@ -695,6 +708,8 @@ export function TopologyCanvas() {
         world,
         camera: viewport,
         cableSway: swayRef.current,
+        linkPreview,
+        measurePoint: measure?.point ?? null,
         resizeHandleId: resizeDeviceId ?? hoverResizeId,
         coverageActive:
           drag.current.mode === 'coverage' && drag.current.coverageDeviceId && drag.current.coverageHandle
@@ -749,8 +764,19 @@ export function TopologyCanvas() {
     const pos = pointerPos(event);
     const point = screenToWorld(viewport, pos.x, pos.y);
 
-    // 中键 / 右键 / 空格 → 平移（左键留给"选择与移动"，避免误触）
-    if (event.button === 1 || event.button === 2 || spaceHeld) {
+    /*
+     * 右键 → 上下文菜单（FR-80）。
+     *
+     * 右键原本是平移的三种方式之一；上下文菜单是更主流的约定，而平移仍有
+     * 中键与 Space+左键两条路。菜单里只放**真的能执行**的命令（D-53 的同一条原则）。
+     */
+    if (event.button === 2) {
+      setMenu({ x: pos.x, y: pos.y, world: point });
+      return;
+    }
+
+    // 中键 / 空格+左键 → 平移（左键留给"选择与移动"，避免误触）
+    if (event.button === 1 || spaceHeld) {
       drag.current = {
         mode: 'pan',
         armed: true,
@@ -877,30 +903,40 @@ export function TopologyCanvas() {
       }
     }
 
-    if (linkMode) {
-      if (hit) {
-        const portId = hitVisiblePort(world, hit, point.x, point.y);
-        if (portId) {
-          store.clickPort(hit.id, portId);
-          return;
-        }
-      }
-      return; // 连线模式下点空白处不做任何事，避免误操作
-    }
-
-    // 端口图元优先于卡片本体：点击端口是"编辑这个端口"，而不是"拖动设备"
+    /*
+     * 端口：**按下即选中该端口，并等待"拖到另一个端口"**（FR-79）。
+     *
+     * 一条代码路径同时服务两种用法：
+     *   · 连线模式下的"点两次"：按下就把这个端口变成起点（clickPort，语义与旧版完全一致）；
+     *   · 任何时候的"拖拽连线"：指针移动越过阈值后，才把起点端口变成 draft 并拉出橡皮筋 ——
+     *     没有拖动的单击仍然只是"选中端口"，不会莫名进入连线状态。
+     * 完成连线的验算与提示都走 store.clickPort（两端介质、已有线缆、无线多关联等），
+     * 因此拖拽与点两次**不可能出现两套规则**。
+     */
     if (hit) {
       const portId = hitVisiblePort(world, hit, point.x, point.y);
       if (portId) {
-        if (additive && selection.devices.length > 0) {
-          // 已经多选设备时，加选端口没有意义，直接切换端口选择
-          store.selectPort(hit.id, portId);
-          return;
-        }
         store.selectPort(hit.id, portId);
+        // 连线模式：这个端口还不是起点时，按下即"点它"（旧语义：设起点 / 完成连线）
+        const draft = store.linkDraft;
+        const draftIsHere = draft?.deviceId === hit.id && draft.portId === portId;
+        if (linkMode && !draftIsHere) store.clickPort(hit.id, portId);
+        drag.current = {
+          mode: 'link',
+          // 拖动与否要越过阈值才算数：单击＝选中端口 / 设起点，不该被当成拖拽
+          armed: false,
+          startX: pos.x,
+          startY: pos.y,
+          originX: 0,
+          originY: 0,
+          linkSource: { deviceId: hit.id, portId },
+        };
+        canvas.setPointerCapture(event.pointerId);
         return;
       }
     }
+
+    if (linkMode) return; // 连线模式下点空白处不做任何事，避免误操作
 
     const device = hit;
     if (device) {
@@ -1070,6 +1106,30 @@ export function TopologyCanvas() {
     }
 
     /*
+     * 拖拽连线（FR-79）：越过阈值后把起点端口变成 draft，并让橡皮筋跟手。
+     *
+     * 这里先 cancelLink 再 clickPort：如果草稿停在**别的**端口上，
+     * 直接 clickPort 会被理解成"连线到那个端口"—— 用户拖的是这里，不是那里。
+     */
+    if (current.mode === 'link' && current.linkSource) {
+      if (!current.armed) {
+        const travelled = Math.hypot(pos.x - current.startX, pos.y - current.startY);
+        if (travelled < DRAG_THRESHOLD_PX) return;
+        current.armed = true;
+        const store = useApp.getState();
+        const draft = store.linkDraft;
+        const draftIsHere =
+          draft?.deviceId === current.linkSource.deviceId && draft.portId === current.linkSource.portId;
+        if (!draftIsHere) {
+          if (draft) store.cancelLink();
+          store.clickPort(current.linkSource.deviceId, current.linkSource.portId);
+        }
+      }
+      setLinkPreview(point);
+      return;
+    }
+
+    /*
      * 拖覆盖手柄（D-56）：半径 / 开合角 / 朝向，三种都走同一个"视图 → 新值 → 写回"路径。
      * 每帧的写入都在 beginHistory 打开的事务里，整段拖动只算一条历史。
      */
@@ -1163,6 +1223,24 @@ export function TopologyCanvas() {
       setResizeDeviceId(null);
       useApp.getState().commitHistory();
     }
+    if (current.mode === 'link') {
+      setLinkPreview(null);
+      /*
+       * 松手时落在**端口**上才连线；落在空处＝取消（拖拽是一次完整的手势，
+       * 松手就该给出结果，而不是留下一个"半连线"状态等用户再点一下）。
+       * 真正的校验交给 store.clickPort —— 与点两次完全同一条路径。
+       */
+      if (current.armed && current.linkSource && cursor) {
+        const store = useApp.getState();
+        const pointer = screenToWorld(viewport, cursor.x, cursor.y);
+        const target = hitDevice(store.world, pointer.x, pointer.y);
+        const portId = target ? hitVisiblePort(store.world, target, pointer.x, pointer.y) : undefined;
+        const samePort =
+          target?.id === current.linkSource.deviceId && portId === current.linkSource.portId;
+        if (target && portId && !samePort) store.clickPort(target.id, portId);
+        else store.cancelLink();
+      }
+    }
     if (current.mode === 'coverage') {
       setHoverCoverage(null);
       // 只是点了一下圈边（选中这台设备）而没有拖动 → commit 会自动丢弃这次事务
@@ -1243,6 +1321,29 @@ export function TopologyCanvas() {
     useApp.getState().addDevice(templateKey, point.x - NODE_W / 2, point.y - NODE_H / 2);
   };
 
+  /*
+   * 右键菜单的项（FR-80）。原则与命令菜单一致：**只放真的能执行的命令**，
+   * 每加一项都得有实现；菜单本身只是"把命令放到指针所在的位置"。
+   */
+  const contextMenuItems: ContextMenuItem[] = menu
+    ? [
+        {
+          id: 'measure-wireless',
+          label: '测量此点的无线信号',
+          hint: '信道 / 质量',
+          icon: 'measure',
+          onSelect: () =>
+            setMeasure({ point: menu.world, at: { x: menu.x, y: menu.y } }),
+        },
+        {
+          id: 'fit-view',
+          label: '适应视图',
+          icon: 'maximize',
+          onSelect: () => useApp.getState().fitView(),
+        },
+      ]
+    : [];
+
   const deviceCount = selection.devices.length;
   const cableCount = selection.cables.length;
   const portSelection = selection.port
@@ -1297,6 +1398,29 @@ export function TopologyCanvas() {
         aria-hidden
         className="pointer-events-none absolute inset-0 block h-full w-full"
       />
+
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          bounds={size}
+          items={contextMenuItems}
+          onClose={() => setMenu(null)}
+          onReopen={(at) => {
+            // 换个地方再右键：菜单跟过去，世界点也要重新算
+            setMenu({ x: at.x, y: at.y, world: screenToWorld(viewport, at.x, at.y) });
+          }}
+        />
+      )}
+
+      {measure && (
+        <WirelessMeasurePanel
+          point={measure.point}
+          at={measure.at}
+          bounds={size}
+          onClose={() => setMeasure(null)}
+        />
+      )}
 
       {/* 左上角：模式提示 */}
       {linkMode && (
