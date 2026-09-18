@@ -114,7 +114,7 @@ interface Hop {
 |---|---|---|
 | `LINK_SPEED_LIMITED` | 链路降速（线缆能力限制） | CAT6 拉 60 m |
 | `LINK_SPEED_NEGOTIATED` | 两端端口速率不同，按较低者协商 | 2.5G 口接千兆口 |
-| `WIFI_SHARED_MEDIUM` | 无线是共享半双工介质 | 同一 AP 下多客户端 |
+| `WIFI_SHARED_MEDIUM` | 无线是共享半双工介质（WiFi 与蜂窝共用此码） | 同一 AP 下多客户端 / 同一小区内多台终端 |
 | `CELLULAR_RADIO_DOWNGRADE` | 两端蜂窝世代不同，按低的一代回落 | 4G 终端在 5G 网络下只能用 LTE |
 | `L2_LOOP` | 检测到二层环路（附**闭合的环路径**与波及范围） | 双上行没做聚合 / 跳线插回自己 / 无线中继接回有线 |
 | `BROADCAST_STORM` | 广播风暴风险：以太网帧没有 TTL，广播帧沿环无限循环 | 同上的后果说明 + 已知简化披露 |

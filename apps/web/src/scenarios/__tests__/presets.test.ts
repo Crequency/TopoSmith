@@ -578,6 +578,11 @@ describe('蜂窝网络场景', () => {
     const result = bandwidth(world, 'dev-phone-4g-a', '203.0.113.1');
     expect(result.ok).toBe(true);
     expect(result.metrics?.hasWireless).toBe(true);
+    // 蜂窝与 WiFi 共用同一个原因码，但文案必须说"同一小区/单用户峰值"，
+    // 否则用户会把"5G 标称 1 Gbps"当成"我能用 1 Gbps"
+    const shared = result.steps.find((step) => step.code === 'WIFI_SHARED_MEDIUM');
+    expect(shared?.detail).toContain('单用户峰值');
+    expect(shared?.detail).toContain('同一小区');
     // 两台 4G 手机 + 5G 扇区里那台手机同处一个广播域：空口是共享的
     expect(result.metrics?.wirelessConcurrency).toBe(3);
     // 4G 的标称 150 Mbps 是单用户峰值，真实吞吐还要再打共享与半双工的折扣

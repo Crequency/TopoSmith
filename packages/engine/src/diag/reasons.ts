@@ -26,6 +26,10 @@ export type ReasonCode =
   /* ── 提示（不阻断） ── */
   | 'LINK_SPEED_LIMITED'
   | 'LINK_SPEED_NEGOTIATED'
+  /**
+   * 无线共享介质（WiFi 与蜂窝共用同一个原因码）。
+   * 判据是"路径上有没有 wireless 段"，与具体制式无关：空口都是所有人分一份。
+   */
   | 'WIFI_SHARED_MEDIUM'
   | 'CELLULAR_RADIO_DOWNGRADE'
   | 'L2_LOOP'
