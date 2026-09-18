@@ -1,0 +1,28 @@
+# 构建上下文里"不该寄给 Docker daemon"的东西。
+#
+# 注意：被忽略的文件**不会**进入构建阶段，所以"构建真正需要的东西"一个都不能漏 ——
+# 这里只排除依赖、构建产物、以及纯开发/本机用的资料。
+
+# 依赖与构建产物：容器里重新装、重新构建
+node_modules
+**/node_modules
+**/dist
+
+# 版本控制与 CI 配置
+.git
+.gitignore
+.github
+
+# 本机脚本与状态（端到端脚本、DevHub 登记、字体、日志）
+.verify
+.devhub-*.json
+.fonts
+*.log
+
+# 文档与品牌源文件：构建用不到（README 截图 / 品牌 SVG 由本机脚本产出）
+docs
+assets
+README.md
+
+# 本机环境说明（不入库的说明文件也一并挡在上下文之外）
+TOPOSMITH-LOCAL-ENV.md

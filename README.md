@@ -152,6 +152,33 @@ CI（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）就是这样做的
 `verify` 任务跑类型检查与两套单测，`deploy` 任务用 `actions/configure-pages` 给出的
 `base_path` 作为 `BASE_PATH` 构建，再发布到 GitHub Pages。
 
+## 容器化（Docker + Caddy）
+
+仓库自带 `Dockerfile` 与 `Caddyfile`：构建阶段用 Node 22 + pnpm 跑 `pnpm build`，
+运行阶段是官方 `caddy:2-alpine`，只做静态文件服务 —— 最终镜像里没有 Node，也没有运行时依赖。
+
+```bash
+docker build -t toposmith:local .
+docker run --rm -p 41006:41006 toposmith:local      # 打开 http://127.0.0.1:41006/
+```
+
+**端口 = 开发服务器端口 + 10000：`31006 → 41006`**（`PORT` 环境变量可覆盖，Caddyfile 读的是同一个变量）。
+子路径部署时把基路径作为构建参数传进去：
+
+```bash
+docker build --build-arg BASE_PATH=/TopoSmith/ -t toposmith:sub .
+```
+
+Caddyfile 里几处刻意的选择：
+
+- **`/assets/*` 只认真实文件**，缺失就给 404 —— 若让它也走 SPA 回退，缺失的 JS 会返回 `index.html`
+  （200 + `text/html`），浏览器报 "Unexpected token '<'"，极难定位；
+- **带内容哈希的资源长缓存**（`immutable`，一年），**入口与清单不缓存**（否则发版后用户会拿着旧
+  `index.html` 去请求已删除的资源）；
+- **不做 HTTPS**：容器只监听一个高位端口，证书交给外层反向代理/网关；要直连公网就把 Caddyfile
+  里的 `:41006` 换成域名，Caddy 会自动申请证书；
+- 容器内以非特权 uid 运行，并带一个 `HEALTHCHECK`。
+
 ## 项目结构
 
 ```
@@ -159,6 +186,8 @@ toposmith/
 ├─ docs/                需求、领域模型、目录表、架构、引擎、诊断契约、路线图、决策记录
 ├─ assets/brand/        标识源文件：mark.svg（图形）+ 两种主题的字标
 ├─ scripts/             构建脚本：品牌产物、README 截图（共用 playwright 加载器）
+├─ Dockerfile           多阶段镜像：Node 构建 → Caddy 静态服务（端口 41006）
+├─ Caddyfile            静态站点配置：SPA 回退 / 资源长缓存 / 入口不缓存
 ├─ packages/
 │  ├─ schema/           类型定义 + 导入校验（输入契约）
 │  ├─ catalog/          设备 / 端口 / 线缆 / 速率目录（纯数据）

@@ -151,12 +151,23 @@ toposmith/
 
 ## 8. 部署形态
 
-`apps/web` 构建产物为纯静态文件（`dist/`），可放任意静态托管。
+`apps/web` 的构建产物（`dist/`）是纯静态文件，可放任意静态托管。
 **零后端**不是权宜之计而是产品定位的一部分：可离线、可内网部署、可嵌入文档站、
 没有服务器成本，也就没有"服务停了拓扑打不开"的风险。
-
 将来若要做多人协作（FR-24 之外），后端只承担 CRDT 中继与对象存储，
 推演仍在前端完成——**推演逻辑永远可以离线跑**。
+
+两种现成的形态：
+
+| 形态 | 做法 | 基路径 |
+|---|---|---|
+| GitHub Pages | `.github/workflows/ci.yml` 的 `deploy` 任务，取 `configure-pages` 的 `base_path` | 由 `BASE_PATH` 注入 |
+| 容器（Caddy） | `Dockerfile`（多阶段）+ `Caddyfile`：构建阶段 Node 22 + pnpm 跑 `pnpm build`，运行阶段 `caddy:2-alpine` 只做静态服务，**镜像里不含 Node** | 根路径；子路径用 `--build-arg BASE_PATH=/xxx/` |
+
+容器端口 **41006 = 开发服务器端口 31006 + 10000**（`PORT` 环境变量可覆盖，
+Caddyfile 与 `EXPOSE`/`HEALTHCHECK` 读的是同一个变量）。Caddyfile 的三条约定：
+`/assets/*` 只认真实文件（缺失就是 404，不把入口当 JS 返回）、
+哈希资源长缓存而入口/清单不缓存、容器内不做 TLS（交给外层反向代理或网关）。
 
 ## 9. 开发服务器与端口
 
