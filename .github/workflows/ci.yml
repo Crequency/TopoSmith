@@ -50,6 +50,76 @@ jobs:
       - name: Build
         run: pnpm build
 
+  # The Dockerfile is part of the contract too: it must build, the container must serve
+  # the app, and `/assets/*` must 404 on a missing file instead of falling back to
+  # index.html (a 200 + text/html for a .js request is the classic "Unexpected token '<'").
+  # Nothing is pushed to a registry — this job only proves the image works.
+  image:
+    name: Image (docker build · container smoke)
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The BuildKit cache mount in the Dockerfile needs the docker-container driver,
+      # which the default builder on the runner does not provide.
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: toposmith:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run the container and smoke-test it
+        run: |
+          set -euo pipefail
+          docker run -d --name toposmith-ci -p 41006:41006 toposmith:ci
+
+          echo "Waiting for Caddy to answer on :41006 …"
+          for attempt in $(seq 1 30); do
+            if [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:41006/ || true)" = "200" ]; then
+              break
+            fi
+            sleep 2
+          done
+
+          index_code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:41006/)
+          index_type=$(curl -s -o /dev/null -w '%{content_type}' http://127.0.0.1:41006/)
+          echo "GET /            -> $index_code $index_type"
+          [ "$index_code" = "200" ]
+          case "$index_type" in text/html*) ;; *) echo "entry is not HTML"; exit 1 ;; esac
+
+          # A deep link must fall back to the entry point.
+          deep_code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:41006/some/deep/link)
+          echo "GET /some/deep/link -> $deep_code"
+          [ "$deep_code" = "200" ]
+
+          # A missing build artifact must 404, never fall back to index.html.
+          missing_code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:41006/assets/does-not-exist.js)
+          echo "GET /assets/does-not-exist.js -> $missing_code"
+          [ "$missing_code" = "404" ]
+
+          # The entry must not be cached; hashed assets must be immutable.
+          curl -sI http://127.0.0.1:41006/ | grep -qi '^cache-control: no-cache'
+          asset=$(basename "$(ls apps/web/dist/assets/*.js | head -1)")
+          curl -sI "http://127.0.0.1:41006/assets/$asset" | grep -qi 'immutable'
+          echo "cache headers OK"
+
+      - name: Container logs (on failure)
+        if: failure()
+        run: docker logs toposmith-ci || true
+
+      - name: Tear down
+        if: always()
+        run: docker rm -f toposmith-ci || true
+
   deploy:
     name: Deploy to GitHub Pages
     needs: verify

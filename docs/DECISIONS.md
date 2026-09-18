@@ -1040,6 +1040,9 @@
 - **代价**：多维护两个文件（`Dockerfile` / `Caddyfile`）与一条 `.dockerignore`；
   容器里没有 Node，因此不能在镜像内做"运行时改配置"这类操作（本来也不需要）。
 - **验证**：本机 Docker 守护进程不可用时，用**同一份 Caddyfile、同一个端口**直接对
-  `apps/web/dist` 起 Caddy 实测（`docs` 里的静态部分与真实请求都对过）；
+  `apps/web/dist` 起 Caddy 实测（静态部分与真实请求都对过）；
   构建阶段的命令（`pnpm install --frozen-lockfile` + `pnpm build`）在宿主机跑通。
+  另外 CI 增加了 `image` 任务：**真的 `docker build` 并起容器冒烟**（不推送），
+  核对入口 200/HTML、深链接回退、缺失资源 404、两类缓存头 —— 这样 Dockerfile 与
+  Caddyfile 每次改动都会被机器验证一次，而不是只靠人读。
 - **状态**：✅ 生效（2026-09-17）。
