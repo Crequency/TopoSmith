@@ -15,17 +15,31 @@ import {
   DEFAULT_LABEL_RATIO,
   DEVICE_KIND_LABEL,
   DEVICE_SUBTYPE_LABEL,
+  MAX_COVERAGE_RADIUS_M,
+  MAX_SECTOR_ANGLE_DEG,
+  MIN_COVERAGE_RADIUS_M,
+  MIN_SECTOR_ANGLE_DEG,
   PORT_MEDIUM_LABEL,
   clampLabelRatio,
+  clampSectorAngle,
+  coverageContains,
+  coverageMarginM,
+  deviceCenter,
+  isCellularStandard,
+  omniCoverage,
+  sectorCoverage,
   type AccessMode,
   type CableType,
+  type CoverageShape,
   type Device,
   type Port,
   type PortMedium,
   type PortRole,
   type PortSide,
+  type RadioCoverage,
+  type RadioStandard,
   type WifiBand,
-  type WifiStandard,
+  type WirelessRadio,
 } from '@toposmith/schema';
 import { firstLinkOfPort, type World } from '@toposmith/anvil';
 import {
@@ -42,7 +56,7 @@ import {
 } from '../lib/geometry';
 import { speedColor } from '../lib/speed-color';
 import { deviceIcon, Icon, uiIcon, type UiIconName } from '../lib/icons';
-import { isRackable } from '@toposmith/catalog';
+import { defaultCoverageFor, isRackable } from '@toposmith/catalog';
 import { useApp } from '../state/store';
 import { Button, Checkbox, Field, NumberInput, Select, TextInput } from './ui';
 
@@ -54,6 +68,21 @@ const SPEED_OPTIONS = [
   { value: SPEED.eth10g, label: '10 Gbps' },
   { value: SPEED.eth25g, label: '25 Gbps' },
   { value: 0, label: '无线（协商）' },
+];
+
+/**
+ * 无线制式选项：WiFi 各代 + 蜂窝两代。
+ *
+ * 蜂窝只在基站与蜂窝终端上有意义，但"把一台 AP 改成 4G 基站"是用户会做的事
+ * （相当于换设备），这里不拦；制式与网络对不上时链路上会明确报错。
+ */
+const RADIO_STANDARD_OPTIONS: { value: RadioStandard; label: string }[] = [
+  { value: '802.11n', label: 'WiFi 4（802.11n）' },
+  { value: '802.11ac', label: 'WiFi 5（802.11ac）' },
+  { value: '802.11ax', label: 'WiFi 6（802.11ax）' },
+  { value: '802.11be', label: 'WiFi 7（802.11be）' },
+  { value: 'lte', label: 'LTE（4G）' },
+  { value: 'nr', label: 'NR（5G）' },
 ];
 
 const ROLE_OPTIONS: { value: PortRole; label: string }[] = [
@@ -667,6 +696,8 @@ function DeviceInspector({ device, world }: { device: Device; world: World }) {
   const rackable = isRackable(device);
 
   const isGateway = device.kind === 'ont' || device.kind === 'router';
+  // 蜂窝设备没有 SSID / 频段 / 信道，取而代之的是 PLMN（D-58）
+  const cellular = isCellularStandard(device.wireless?.standard);
 
   // 这台设备所在广播域里的二层环路：风暴会波及整个域，不只是环上的设备
   const affectedLoops = world.loops.filter((loop) => loop.affected.has(device.id));
@@ -1187,70 +1218,240 @@ function DeviceInspector({ device, world }: { device: Device; world: World }) {
                 }
               />
             </Field>
-            <Field label="标准">
-              <Select<WifiStandard>
+            <Field
+              label="制式"
+              hint="WiFi 与蜂窝是两套物理层：终端制式要能接上对方的网络"
+            >
+              <Select<RadioStandard>
                 value={device.wireless?.standard ?? '802.11ax'}
-                options={[
-                  { value: '802.11n', label: '802.11n' },
-                  { value: '802.11ac', label: '802.11ac' },
-                  { value: '802.11ax', label: '802.11ax (WiFi 6)' },
-                  { value: '802.11be', label: '802.11be (WiFi 7)' },
-                ]}
+                options={RADIO_STANDARD_OPTIONS}
                 onChange={(standard) =>
                   patchDevice(device.id, (d) => {
-                    d.wireless = { ...(d.wireless ?? { mode: 'sta' }), standard };
+                    const next: WirelessRadio = { ...(d.wireless ?? { mode: 'sta' }), standard };
+                    if (isCellularStandard(standard)) {
+                      // 蜂窝没有 SSID / 频段 / 信道，切过去时清掉，避免留下自相矛盾的字段
+                      delete next.ssid;
+                      delete next.band;
+                      delete next.channel;
+                    }
+                    d.wireless = next;
                   })
                 }
               />
             </Field>
           </div>
-          <Field label="SSID" hint="STA 与 AP 的 SSID 必须完全一致（大小写敏感），否则链路不可用">
-            <TextInput
-              value={device.wireless?.ssid ?? ''}
-              onChange={(ssid) =>
-                patchDevice(device.id, (d) => {
-                  d.wireless = { ...(d.wireless ?? { mode: 'sta' }), ssid };
-                })
-              }
-            />
-          </Field>
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="频段">
-              <Select<WifiBand>
-                value={device.wireless?.band ?? '5G'}
-                options={[
-                  { value: '2.4G', label: '2.4 GHz' },
-                  { value: '5G', label: '5 GHz' },
-                  { value: '6G', label: '6 GHz' },
-                ]}
-                onChange={(band) =>
+
+          {cellular ? (
+            <Field label="PLMN" hint="蜂窝网络标识（如 46000）。两端都填且不一致 → 关联不成立">
+              <TextInput
+                value={device.wireless?.plmn ?? ''}
+                onChange={(plmn) =>
                   patchDevice(device.id, (d) => {
-                    d.wireless = { ...(d.wireless ?? { mode: 'sta' }), band };
+                    d.wireless = { ...(d.wireless ?? { mode: 'sta' }), plmn };
                   })
                 }
               />
             </Field>
-            <Field label="信道">
-              <NumberInput
-                value={device.wireless?.channel ?? 36}
-                min={1}
-                max={233}
-                onChange={(channel) =>
-                  patchDevice(device.id, (d) => {
-                    d.wireless = { ...(d.wireless ?? { mode: 'sta' }), channel };
-                  })
-                }
-              />
-            </Field>
-          </div>
+          ) : (
+            <>
+              <Field label="SSID" hint="STA 与 AP 的 SSID 必须完全一致（大小写敏感），否则链路不可用">
+                <TextInput
+                  value={device.wireless?.ssid ?? ''}
+                  onChange={(ssid) =>
+                    patchDevice(device.id, (d) => {
+                      d.wireless = { ...(d.wireless ?? { mode: 'sta' }), ssid };
+                    })
+                  }
+                />
+              </Field>
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="频段">
+                  <Select<WifiBand>
+                    value={device.wireless?.band ?? '5G'}
+                    options={[
+                      { value: '2.4G', label: '2.4 GHz' },
+                      { value: '5G', label: '5 GHz' },
+                      { value: '6G', label: '6 GHz' },
+                    ]}
+                    onChange={(band) =>
+                      patchDevice(device.id, (d) => {
+                        d.wireless = { ...(d.wireless ?? { mode: 'sta' }), band };
+                      })
+                    }
+                  />
+                </Field>
+                <Field label="信道">
+                  <NumberInput
+                    value={device.wireless?.channel ?? 36}
+                    min={1}
+                    max={233}
+                    onChange={(channel) =>
+                      patchDevice(device.id, (d) => {
+                        d.wireless = { ...(d.wireless ?? { mode: 'sta' }), channel };
+                      })
+                    }
+                  />
+                </Field>
+              </div>
+            </>
+          )}
         </Section>
       )}
+
+      {/* 覆盖区域：只有提供接入的一端（AP / 家用网关 / 基站）才有 */}
+      {device.wireless?.mode === 'ap' && <CoverageSection device={device} world={world} />}
 
       <p className="text-[10px] leading-snug text-slate-600">
         当前待用线缆：{cableLabel(cableTypeLabel)}（在顶部工具栏切换）。端口仅展示介质与速率，
         线缆类别与长度在选中线缆后编辑。
       </p>
     </div>
+  );
+}
+
+/**
+ * 覆盖区域面板（D-56 / D-57）。
+ *
+ * 这里编辑的是**物理事实**（覆盖半径、扇形朝向/开合角），不是"哪些设备连着我" ——
+ * 关联仍然是显式事实（画布上拉出来的无线链路），覆盖只回答"这个关联成不成立"。
+ * 面板同时把结论摊开给用户看：圈内有几台设备、几条无线关联、几条因为出圈而不可用。
+ */
+function CoverageSection({ device, world }: { device: Device; world: World }) {
+  const patchDevice = useApp((s) => s.patchDevice);
+  if (device.wireless?.mode !== 'ap') return null;
+
+  const coverage = device.wireless.coverage;
+  const enabled = coverage?.enabled !== false && coverage !== undefined;
+  const center = deviceCenter(device);
+
+  const patchCoverage = (next: RadioCoverage) =>
+    patchDevice(device.id, (d) => {
+      d.wireless = { ...(d.wireless ?? { mode: 'ap' }), coverage: next };
+    });
+
+  const shape: CoverageShape = coverage?.shape ?? 'omni';
+  const radiusM = coverage?.radiusM ?? defaultCoverageFor(device.kind).radiusM;
+
+  // 结论回显：圈内有谁、关联成不成立。数量口径与引擎一致（都用 deviceCenter + coverageContains）
+  const inside = enabled
+    ? world.ordered.filter(
+        (other) =>
+          other.id !== device.id && other.kind !== 'rack' && coverageContains(coverage, center, deviceCenter(other)),
+      )
+    : [];
+  const links = world.links.filter(
+    (link) => link.family === 'wireless' && (link.a.deviceId === device.id || link.b.deviceId === device.id),
+  );
+  const broken = links.filter((link) => !link.up);
+
+  return (
+    <Section
+      title="覆盖区域"
+      hint="覆盖圈说明“能服务到哪”；关联仍是显式事实，圈内设备不会自动连上，出圈的关联则直接不成立"
+    >
+      <Checkbox
+        label="绘制并参与覆盖判定"
+        checked={enabled}
+        onChange={(next) =>
+          patchCoverage(
+            next
+              ? omniCoverage(radiusM)
+              : { ...(coverage ?? omniCoverage(radiusM)), enabled: false },
+          )
+        }
+      />
+
+      {enabled && (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="形状">
+              <Select<CoverageShape>
+                value={shape}
+                options={[
+                  { value: 'omni', label: '全向（圆）' },
+                  { value: 'sector', label: '定向（扇形）' },
+                ]}
+                onChange={(next) =>
+                  patchCoverage(
+                    next === 'omni'
+                      ? omniCoverage(radiusM)
+                      : sectorCoverage(radiusM, coverage?.angleDeg ?? 90, coverage?.azimuthDeg ?? 0),
+                  )
+                }
+              />
+            </Field>
+            <Field label="半径（米）">
+              <NumberInput
+                value={Math.round(radiusM)}
+                min={MIN_COVERAGE_RADIUS_M}
+                max={MAX_COVERAGE_RADIUS_M}
+                step={1}
+                onChange={(radius) =>
+                  patchCoverage(
+                    shape === 'omni'
+                      ? omniCoverage(radius)
+                      : sectorCoverage(radius, coverage?.angleDeg ?? 90, coverage?.azimuthDeg ?? 0),
+                  )
+                }
+              />
+            </Field>
+          </div>
+
+          {shape === 'sector' && (
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="开合角度（°）">
+                <NumberInput
+                  value={clampSectorAngle(coverage?.angleDeg ?? 90)}
+                  min={MIN_SECTOR_ANGLE_DEG}
+                  max={MAX_SECTOR_ANGLE_DEG}
+                  step={5}
+                  onChange={(angle) =>
+                    patchCoverage(sectorCoverage(radiusM, angle, coverage?.azimuthDeg ?? 0))
+                  }
+                />
+              </Field>
+              <Field label="朝向（°）" hint="0° 指向右方（+X），顺时针为正">
+                <NumberInput
+                  value={Math.round(coverage?.azimuthDeg ?? 0)}
+                  min={0}
+                  max={359}
+                  step={5}
+                  onChange={(azimuth) =>
+                    patchCoverage(sectorCoverage(radiusM, coverage?.angleDeg ?? 90, azimuth))
+                  }
+                />
+              </Field>
+            </div>
+          )}
+
+          <p className="text-[10px] leading-snug text-slate-500">
+            画布按 1 米 = 20 世界单位绘制（D-56）。当前圈内 {inside.length} 台设备 · 无线关联{' '}
+            {links.length} 条
+            {broken.length > 0 ? (
+              <span className="text-amber-300/90">，其中 {broken.length} 条不可用</span>
+            ) : null}
+            。
+          </p>
+          {broken.length > 0 && (
+            <ul className="flex flex-col gap-0.5 text-[10px] text-amber-200/90">
+              {broken.map((link) => {
+                const peerId = link.a.deviceId === device.id ? link.b.deviceId : link.a.deviceId;
+                const peer = world.devices.get(peerId);
+                const peerCenter = peer ? deviceCenter(peer) : null;
+                const margin = coverage && peerCenter ? coverageMarginM(coverage, center, peerCenter) : 0;
+                return (
+                  <li key={link.id} className="font-mono">
+                    {peer?.name ?? peerId}：{link.issues.find((i) => i.level === 'error')?.text.slice(0, 40) ??
+                      '关联不可用'}
+                    {margin < 0 ? `（差 ${Math.abs(Math.round(margin))} m）` : ''}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </>
+      )}
+    </Section>
   );
 }
 

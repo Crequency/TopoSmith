@@ -27,6 +27,7 @@ export type ReasonCode =
   | 'LINK_SPEED_LIMITED'
   | 'LINK_SPEED_NEGOTIATED'
   | 'WIFI_SHARED_MEDIUM'
+  | 'CELLULAR_RADIO_DOWNGRADE'
   | 'L2_LOOP'
   | 'BROADCAST_STORM'
   | 'KNOWN_SIMPLIFICATION'
@@ -43,6 +44,9 @@ export type ReasonCode =
   | 'LINK_TOO_LONG'
   | 'MEDIUM_MISMATCH'
   | 'SSID_MISMATCH'
+  | 'RADIO_TECH_MISMATCH'
+  | 'CELLULAR_PLMN_MISMATCH'
+  | 'WIRELESS_OUT_OF_COVERAGE'
   | 'VLAN_MISMATCH'
   | 'ARP_FAILED'
   | 'NAT_MISSING'
@@ -59,6 +63,7 @@ export const REASON_TITLE: Partial<Record<ReasonCode, string>> = {
   LINK_SPEED_LIMITED: '链路降速（线缆能力限制）',
   LINK_SPEED_NEGOTIATED: '链路按较低速率协商',
   WIFI_SHARED_MEDIUM: '无线为共享半双工介质',
+  CELLULAR_RADIO_DOWNGRADE: '蜂窝世代不同（按低一代回落）',
   L2_LOOP: '检测到二层环路',
   BROADCAST_STORM: '广播风暴风险',
   KNOWN_SIMPLIFICATION: '已知简化',
@@ -74,6 +79,9 @@ export const REASON_TITLE: Partial<Record<ReasonCode, string>> = {
   LINK_TOO_LONG: '线缆超过长度上限',
   MEDIUM_MISMATCH: '端口介质不匹配',
   SSID_MISMATCH: '无线 SSID 不一致',
+  RADIO_TECH_MISMATCH: '无线制式不匹配（WiFi ≠ 蜂窝）',
+  CELLULAR_PLMN_MISMATCH: '蜂窝网络标识（PLMN）不一致',
+  WIRELESS_OUT_OF_COVERAGE: '设备不在无线覆盖范围内',
   VLAN_MISMATCH: '两端不在同一广播域',
   ARP_FAILED: 'ARP 解析失败',
   NAT_MISSING: '缺少 NAT，公网无法回程',

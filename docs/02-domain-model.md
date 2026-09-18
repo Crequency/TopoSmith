@@ -30,7 +30,7 @@ Scenario ─┬─ Device ─┬─ Port ────┐
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `id` | string | 稳定 ID（`dev-1` 形式，导入时重映射） |
-| `kind` | DeviceKind | `ont`/`router`/`switch`/`computer`/`mobile`/`embedded`/`ap`/`olt`/`cloud` |
+| `kind` | DeviceKind | `ont`/`router`/`switch`/`computer`/`mobile`/`embedded`/`ap`/`base-station`/`olt`/`cloud`/`rack` |
 | `subtype` | string? | 计算机/可移动/嵌入式的细分（`desktop`/`rack-server`/`phone`/`nas`…） |
 | `name` | string | 显示名，如「客厅光猫」 |
 | `model` | string? | 型号文本，仅展示 |
@@ -39,7 +39,7 @@ Scenario ─┬─ Device ─┬─ Port ────┐
 | `l3` | {interfaces, staticRoutes, defaultGateway} | 三层配置 |
 | `services` | {dhcp?, dns?, nat?} | 服务能力 |
 | `client` | ClientAddressing? | 终端类设备的地址获取方式 |
-| `wireless` | WirelessRadio? | AP/STA 无线配置 |
+| `wireless` | WirelessRadio? | 无线配置：角色（`ap`/`sta`）、SSID、频段、制式（WiFi 各代或 `lte`/`nr`）、PLMN、**覆盖区域** |
 | `accessMode` | `'bridge'|'route'`? | 仅光猫/路由器：决定 NAT 与 DHCP 归属 |
 
 **设备的行为由 `kind` 决定的三件事刻画**：
@@ -48,10 +48,16 @@ Scenario ─┬─ Device ─┬─ Port ────┐
 |---|---|---|---|
 | `switch` | ✅ | ✗（M0 不建模 L3 交换机） | 广播域的传播者 |
 | `ap` | ✅（无线↔有线桥接） | ✗ | 无线客户端与 LAN 口同域 |
+| `base-station` | ✅（空口↔回传桥接） | ✗ | 蜂窝终端与回传段同域（已知简化，见 D-58） |
 | `router` / `ont` / `olt` / `cloud` | ✗ | ✅ | **终结广播域** |
 | `computer` / `mobile` / `embedded` | ✗ | ✗ | 端点，只收发 |
 
 这张表是 L2 广播域算法的唯一依据（见 `05-engine.md`）。
+
+无线配置里的**覆盖区域**（`RadioCoverage`）是这一版新增的物理量：
+形状（全向圆 / 定向扇形）、半径（**米**）、定向的开合角与朝向。
+它不改变"关联是显式事实"这一点，只回答"这条关联成不成立"
+（判定口径与画布比例见 `05-engine.md` §5.5 与 D-56 / D-57）。
 
 ### 2.2 Port
 
@@ -137,6 +143,7 @@ interface Scenario {
 1. `Cable.a/b` 指向存在的 `device.ports` 条目；一个端口**最多一根线缆**（M0 不支持堆叠/聚合）。
 2. `Device.ports[].id` 在设备内唯一；`Device.id` 场景内唯一。
 3. 无线线缆两端必须都是 `medium === 'wifi'` 的端口；非无线线缆两端不能是 wifi 口。
+   无线关联的**成立性**另由覆盖几何判定（引擎派生结果，不是导入校验的事）。
 4. 端口速率必须是目录中登记的合法值（UI 用下拉，导入时校验）。
 5. `l3.interfaces[].portId` 必须存在于该设备端口列表。
 6. 拓扑允许孤岛（不连通的部分），诊断时以"不可达"结论呈现，而不是报错。

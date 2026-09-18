@@ -76,7 +76,7 @@ export function buildFtthScenario(): Scenario {
   };
   routerA.services.dns = { enabled: true, records: [], forwarders: ['203.0.113.10'] };
   // 路由器自带无线：A 户笔记本与手机直连它
-  routerA.wireless = { mode: 'ap', ssid: 'Home-A', band: '5G', standard: '802.11ax', channel: 36 };
+  routerA.wireless = { ...routerA.wireless, mode: 'ap', ssid: 'Home-A', band: '5G', standard: '802.11ax', channel: 36 };
 
   // ── B 户：光猫路由模式，自己 NAT / DHCP / DNS
   ontB.l3.interfaces = [
@@ -93,7 +93,8 @@ export function buildFtthScenario(): Scenario {
     dns: ['192.168.2.1'],
   };
   ontB.services.dns = { enabled: true, records: [], forwarders: ['203.0.113.10'] };
-  ontB.wireless = { mode: 'ap', ssid: 'Home-B', band: '2.4G', standard: '802.11n', channel: 6 };
+  // B 户手机离光猫较远（35 m 量级），2.4G 穿墙能力好：保留模板的 40 m 覆盖
+  ontB.wireless = { ...ontB.wireless, mode: 'ap', ssid: 'Home-B', band: '2.4G', standard: '802.11n', channel: 6 };
   /*
    * B 户光猫是老的 EPON 1G（端口速率改小）——对端 OLT 是 10G-EPON，
    * 于是这条 PON 链路按 1G 协商，带宽诊断里能看到"按较低速率协商"。

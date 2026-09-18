@@ -51,6 +51,13 @@ import {
   visiblePortGlyphs,
   type PortGlyph,
 } from '../lib/ports';
+import {
+  COVERAGE_HANDLE_PX,
+  coverageHandlePoint,
+  coverageView,
+  type CoverageHandle,
+  type CoverageView,
+} from '../lib/coverage';
 import { speedColor, speedColorAlpha } from '../lib/speed-color';
 import { pointAt, type FlowPath } from '../lib/flow';
 import type { LinkDraft, Selection, Viewport } from '../state/store';
@@ -75,6 +82,8 @@ export const KIND_COLOR: Record<DeviceKind, string> = {
   mobile: '#e11d48',
   embedded: '#0d9488',
   ap: '#4f46e5',
+  // 基站用紫色，与 WiFi AP 的靛蓝区分开：一张图里同时有两种无线时一眼可辨
+  'base-station': '#a855f7',
   olt: '#0891b2',
   cloud: '#475569',
   rack: '#334155',
@@ -184,13 +193,29 @@ export { cableDropFor, linkPath, type CablePath, type CableSwayOffset };
 /* ────────────────────────────── 连线标签 ────────────────────────────── */
 
 /**
+ * 无线链路失败的**短原因**（画在标签里，所以必须短）。
+ *
+ * 无线关联在画布上不再画线，标签就成了"这条关联怎么了"的唯一入口 ——
+ * 只写"不可用"等于把最有用的信息（为什么不可用）藏起来（D-57）。
+ */
+const WIRELESS_FAIL_SHORT: Partial<Record<string, string>> = {
+  WIRELESS_OUT_OF_COVERAGE: '超出覆盖',
+  SSID_MISMATCH: 'SSID 不一致',
+  RADIO_TECH_MISMATCH: '制式不匹配',
+  CELLULAR_PLMN_MISMATCH: 'PLMN 不一致',
+};
+
+/**
  * 标签文字。速率是链路协商的结果，`不可用`表示链路起不来（标签转红）。
  */
 function labelText(link: DerivedLink): string {
-  if (!link.up) return '不可用';
-  return link.family === 'wireless'
-    ? `WiFi ${formatSpeed(link.speedMbps)}`
-    : formatSpeed(link.speedMbps);
+  const wireless = link.family === 'wireless';
+  if (!link.up) {
+    if (!wireless) return '不可用';
+    const error = link.issues.find((issue) => issue.level === 'error');
+    return error ? (WIRELESS_FAIL_SHORT[error.code] ?? '关联不成立') : '不可用';
+  }
+  return wireless ? `无线 ${formatSpeed(link.speedMbps)}` : formatSpeed(link.speedMbps);
 }
 
 const LABEL_FONT_SIZE = 11;
@@ -301,6 +326,21 @@ function distanceToSegment(p: Point, a: Point, b: Point): number {
   return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
 }
 
+/**
+ * 这条无线关联是否"用覆盖圈表示"（因而不画线、也不参与线体命中）。
+ *
+ * 判据是**任意一端有覆盖信息**：只要画面上有圈，圈＋信号波动画已经把
+ * "谁连着谁"说清楚了，再叠一条虚线只会重复表达（D-57）。
+ * 两端都没有覆盖的旧场景退回虚线 —— 兼容比"一刀切"重要。
+ */
+export function wirelessUsesCoverage(world: World, link: DerivedLink): boolean {
+  if (link.family !== 'wireless') return false;
+  return [link.a.deviceId, link.b.deviceId].some((id) => {
+    const device = world.devices.get(id);
+    return device ? coverageView(device) !== null : false;
+  });
+}
+
 export function hitCable(
   world: World,
   wx: number,
@@ -310,6 +350,8 @@ export function hitCable(
   const point = { x: wx, y: wy };
   let best: { link: DerivedLink; distance: number } | undefined;
   for (const link of world.links) {
+    // 不画的线不该能点到：见 wirelessUsesCoverage
+    if (wirelessUsesCoverage(world, link)) continue;
     const path = linkPath(world, link, cableSway?.get(link.id));
     if (!path) continue;
     let distance = Number.POSITIVE_INFINITY;
@@ -367,6 +409,13 @@ export interface DrawParams {
   /** 右边缘正在被悬浮/拖拽的可调宽设备：给它画一条拖拽把手（FR-49） */
   resizeHandleId?: string | null;
   /**
+   * 指针悬停/正在拖动的覆盖手柄（D-56）。
+   * 悬浮时把它点亮（否则用户不知道圈边能拖），拖动中保持高亮。
+   */
+  coverageActive?: { deviceId: string; handle: CoverageHandle } | null;
+  /** 被选中的覆盖区域所属设备：画手柄与尺寸读数（多个时都画） */
+  coverageSelectedIds?: string[];
+  /**
    * 本帧的连线路径缓存（FR-56）。
    *
    * 一条连线在一帧里要被问两次路径（线体趟 + 标签趟），800 条就是 1600 次
@@ -388,6 +437,9 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawParams): vo
   ctx.save();
   ctx.clearRect(0, 0, width, height);
   drawGrid(ctx, camera, width, height);
+
+  // ── 无线覆盖区域：画在网格之上、连线之下（它是"场地"，不是"设备"）
+  drawCoverages(ctx, params);
 
   // ── 链路（电缆曲线画在卡片下层；标签留到最后单独画，避免被卡片盖住）
   // 每帧只算一次路径，两趟绘制共用（800 条连线时这一项就是十几毫秒）
@@ -470,6 +522,170 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawParams): vo
   ctx.restore();
 }
 
+/* ────────────────────────────── 无线覆盖区域（D-56） ────────────────────────────── */
+
+/**
+ * 覆盖区域的画法。
+ *
+ * 三条约定：
+ *  1. **屏幕空间作圆**：半径先乘 `camera.k` 再画 —— 世界空间里半径可以到几万单位，
+ *     直接拿世界坐标画弧会有精度与虚线密度问题；屏幕空间画还天然得到恒定的线宽。
+ *  2. **淡填充 + 虚线描边**：它是"范围"而不是"设备"，不能抢卡片与连线的视觉权重。
+ *     选中时描边转实线，并把尺寸读数（半径/开合角/朝向）画出来。
+ *  3. **只在选中或悬浮时画手柄**：几百个覆盖圈同时挂着一圈小方块会变成噪声；
+ *     未选中时靠"边缘隐形热区"也能拖（`lib/coverage.ts` 的命中判定）。
+ */
+function drawCoverages(ctx: CanvasRenderingContext2D, params: DrawParams): void {
+  const { world } = params;
+  const selectedIds = params.coverageSelectedIds ?? [];
+  const views: CoverageView[] = [];
+  for (const device of world.ordered) {
+    const view = coverageView(device);
+    if (!view) continue;
+    // 视口外的圈直接跳过（半径按世界单位算包围盒）
+    const margin = view.radiusWorld + 40;
+    if (
+      !boxInView(
+        {
+          x: view.center.x - margin,
+          y: view.center.y - margin,
+          w: margin * 2,
+          h: margin * 2,
+        },
+        params,
+        0,
+      )
+    ) {
+      continue;
+    }
+    views.push(view);
+  }
+  if (views.length === 0) return;
+
+  for (const view of views) {
+    drawCoverageShape(ctx, params, view, selectedIds.includes(view.deviceId));
+  }
+
+  // 手柄与读数画在最后：多个圈重叠时，它们始终压在所有填充之上
+  for (const view of views) {
+    const active = selectedIds.includes(view.deviceId);
+    const hovered = params.coverageActive?.deviceId === view.deviceId;
+    if (!active && !hovered) continue;
+    drawCoverageHandles(ctx, params, view, hovered && active !== true);
+    if (active) drawCoverageReadout(ctx, params, view);
+  }
+}
+
+/** 覆盖区域的形状（世界坐标 → 屏幕坐标的圆弧 / 扇形） */
+function drawCoverageShape(
+  ctx: CanvasRenderingContext2D,
+  params: DrawParams,
+  view: CoverageView,
+  selected: boolean,
+): void {
+  const { camera } = params;
+  const center = worldToScreen(camera, view.center.x, view.center.y);
+  const radius = view.radiusWorld * camera.k;
+  if (radius < 3) return;
+
+  // 颜色跟用户走：基站在画布上是紫色，与 WiFi AP 的青色区分开
+  const device = params.world.devices.get(view.deviceId);
+  const tint = device ? KIND_COLOR[device.kind] : '#38bdf8';
+  const active = params.coverageActive?.deviceId === view.deviceId;
+
+  ctx.save();
+  ctx.beginPath();
+  if (view.shape === 'omni') {
+    ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+  } else {
+    const half = (view.angleDeg / 2) * (Math.PI / 180);
+    const mid = view.azimuthDeg * (Math.PI / 180);
+    ctx.moveTo(center.x, center.y);
+    ctx.arc(center.x, center.y, radius, mid - half, mid + half);
+    ctx.closePath();
+  }
+
+  ctx.fillStyle = withAlpha(tint, selected ? 0.13 : 0.07);
+  ctx.fill();
+
+  ctx.strokeStyle = withAlpha(tint, selected || active ? 0.95 : 0.42);
+  ctx.lineWidth = selected || active ? 1.6 : 1;
+  // 虚线随缩放变密会糊成实线，所以屏幕空间用固定节奏
+  ctx.setLineDash(selected || active ? [] : [6, 5]);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** 手柄：半径在角平分线上，开合角在两条弧边端点，朝向在角平分线中点 */
+function drawCoverageHandles(
+  ctx: CanvasRenderingContext2D,
+  params: DrawParams,
+  view: CoverageView,
+  ghost: boolean,
+): void {
+  const { camera } = params;
+  const handles: { handle: CoverageHandle; side: 1 | -1 }[] =
+    view.shape === 'omni'
+      ? [{ handle: 'radius', side: 1 }]
+      : [
+          { handle: 'radius', side: 1 },
+          { handle: 'rotate', side: 1 },
+          { handle: 'angle', side: 1 },
+          { handle: 'angle', side: -1 },
+        ];
+
+  const size = COVERAGE_HANDLE_PX;
+  ctx.save();
+  ctx.globalAlpha = ghost ? 0.55 : 1;
+  for (const { handle, side } of handles) {
+    const world = coverageHandlePoint(view, handle, side);
+    const at = worldToScreen(camera, world.x, world.y);
+    const hot = params.coverageActive?.handle === handle && params.coverageActive.deviceId === view.deviceId;
+    ctx.beginPath();
+    if (handle === 'rotate') {
+      // 朝向手柄画成圆点：与"拖大小"的方块在手感上就该有区别
+      ctx.arc(at.x, at.y, size, 0, Math.PI * 2);
+    } else {
+      ctx.rect(at.x - size, at.y - size, size * 2, size * 2);
+    }
+    ctx.fillStyle = hot ? '#f8fafc' : 'rgba(15, 23, 42, 0.9)';
+    ctx.strokeStyle = hot ? '#38bdf8' : 'rgba(226, 232, 240, 0.9)';
+    ctx.lineWidth = 1.4;
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** 覆盖读数：半径（必显）、开合角与朝向（定向时） */
+function drawCoverageReadout(
+  ctx: CanvasRenderingContext2D,
+  params: DrawParams,
+  view: CoverageView,
+): void {
+  const { camera } = params;
+  const text =
+    view.shape === 'omni'
+      ? `全向 ${Math.round(view.coverage.radiusM)} m`
+      : `定向 ${Math.round(view.coverage.radiusM)} m · ${Math.round(view.angleDeg)}° · 朝向 ${Math.round(view.azimuthDeg)}°`;
+  const along = coverageHandlePoint(view, 'rotate');
+  const at = worldToScreen(camera, along.x, along.y);
+  ctx.save();
+  ctx.globalAlpha = 0.95;
+  drawSpeedBadge(ctx, { x: at.x, y: at.y - 18 }, text, null);
+  ctx.restore();
+}
+
+/** 给十六进制色加透明度（`#rrggbb` → `rgba()`） */
+function withAlpha(hex: string, alpha: number): string {
+  const value = hex.replace('#', '');
+  const full = value.length === 3 ? value.split('').map((c) => c + c).join('') : value;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 /* ────────────────────────────── 链路 ────────────────────────────── */
 
 function drawCable(
@@ -512,6 +728,26 @@ function drawCable(
   const inPath = params.pathLinkIds.includes(link.id);
   const selected = params.selection.cables.includes(link.id);
   const wireless = link.family === 'wireless';
+
+  /*
+   * 无线关联改由"覆盖圈 + 信号波动画"表达（D-57）：线体不再绘制，
+   * 只保留标签（上方的 label 趟已经画完）—— 标签是这条关联的"铭牌"，
+   * 成败与原因都在那一块小牌子上。
+   */
+  if (wirelessUsesCoverage(world, link)) {
+    // 断开的关联仍给一个极淡的红点标记位置，否则用户看不到"这条关联存在但断了"
+    if (!link.up) {
+      const at = worldToScreen(camera, path.mid.x, path.mid.y);
+      ctx.save();
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(at.x, at.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    return;
+  }
 
   // 速率配色：链路本体用弱化色，标签用实色（FR-34）
   const baseColor = link.up

@@ -7,17 +7,25 @@
  */
 
 import {
+  coverageContains,
+  coverageDistanceOutsideM,
+  coverageEnabled,
+  deviceCenter,
+  distanceMeters,
+  isCellularStandard,
   type Cable,
   type Device,
   type Duplex,
   type Port,
+  type RadioCoverage,
   type Scenario,
 } from '@toposmith/schema';
 import {
   cableSpec,
   cableSpeedAt,
   formatSpeed,
-  wifiNominalMbps,
+  radioNominalMbps,
+  RADIO_STANDARD_LABEL,
   type CableFamily,
 } from '@toposmith/catalog';
 import { inSubnet, ipToString, networkAddress, parseIp } from './ip';
@@ -25,6 +33,11 @@ import type { ReasonCode } from './diag/reasons';
 import { dhcpLease, type LeaseAttempt } from './dhcp';
 import { firstConnectedPortId, portKey } from './graph';
 import { scanL2Loops, type L2Loop } from './l2/loop';
+
+/** 保留一位小数的格式化（覆盖判定里的"还差几米"） */
+function round1(value: number): number {
+  return Math.round(value * 10) / 10;
+}
 
 /* ────────────────────────────── 派生链路 ────────────────────────────── */
 
@@ -153,29 +166,127 @@ export function negotiateLink(
   let duplex: Duplex;
 
   if (wireless) {
-    // 无线：速率由两端 802.11 标准协商；共享介质折扣不在这里扣（docs/05-engine.md §5）
-    const nominalA = wifiNominalMbps(devA.wireless?.standard, devA.wireless?.band);
-    const nominalB = wifiNominalMbps(devB.wireless?.standard, devB.wireless?.band);
+    // 无线：速率由两端无线制式协商（WiFi 看标准 + 频段，蜂窝看世代）；
+    // 共享介质折扣不在这里扣（docs/05-engine.md §5）
+    const radioA = devA.wireless;
+    const radioB = devB.wireless;
+    const nominalA = radioNominalMbps(radioA?.standard, radioA?.band);
+    const nominalB = radioNominalMbps(radioB?.standard, radioB?.band);
     speed = Math.min(nominalA, nominalB);
     duplex = 'half';
     if (speed === 0) {
       issues.push({
         code: 'WIFI_SHARED_MEDIUM',
         level: 'warn',
-        text: '无线端口缺少 802.11 标准配置，无法协商速率，按 0 处理。请在设备面板中设置无线标准。',
+        text: '无线端口缺少制式配置，无法协商速率，按 0 处理。请在设备面板中设置无线标准。',
       });
     }
-    // SSID 必须一致才能真正关联 —— 否则客户端会一直"连不上"，这是最常见的无线故障
-    const ssidA = devA.wireless?.ssid;
-    const ssidB = devB.wireless?.ssid;
-    if (ssidA && ssidB && ssidA !== ssidB) {
+
+    const cellularA = isCellularStandard(radioA?.standard);
+    const cellularB = isCellularStandard(radioB?.standard);
+
+    /*
+     * 制式校验：WiFi 与蜂窝是两套完全不同的物理层。
+     *
+     * 只在**两端都声明了制式**时才判定 —— 一端没配置属于配置缺失
+     * （上面已经报了"无法协商速率"），不该再被误报成"制式不匹配"。
+     */
+    if (radioA?.standard && radioB?.standard && cellularA !== cellularB) {
+      const wifiSide = cellularA ? devB : devA;
+      const cellSide = cellularA ? devA : devB;
       issues.push({
-        code: 'SSID_MISMATCH',
+        code: 'RADIO_TECH_MISMATCH',
         level: 'error',
         text:
-          `两端 SSID 不一致（${ssidA} ≠ ${ssidB}），无线客户端无法关联到该 AP。` +
-          '请把 SSID 改成一致（注意大小写敏感）。',
+          `${wifiSide.name} 是 WiFi 设备、${cellSide.name} 是蜂窝基站：` +
+          '两者不属于同一套无线接入技术，不能直接关联。' +
+          '接蜂窝需要蜂窝模组（4G/5G 终端或 CPE），接 WiFi 需要 AP。',
       });
+    }
+
+    if (cellularA && cellularB) {
+      // 蜂窝：PLMN 决定"是不是同一个网络"，制式不同则是回落（速率取小已经体现了）
+      const plmnA = radioA?.plmn;
+      const plmnB = radioB?.plmn;
+      if (plmnA && plmnB && plmnA !== plmnB) {
+        issues.push({
+          code: 'CELLULAR_PLMN_MISMATCH',
+          level: 'error',
+          text:
+            `两端 PLMN 不一致（${plmnA} ≠ ${plmnB}），终端不会注册到别的运营商网络：` +
+            '蜂窝关联不成立。',
+        });
+      }
+      if (radioA?.standard !== radioB?.standard) {
+        const lower = nominalA <= nominalB ? devA : devB;
+        const higher = lower === devA ? devB : devA;
+        issues.push({
+          code: 'CELLULAR_RADIO_DOWNGRADE',
+          level: 'warn',
+          text:
+            `两端世代不同（${lower.name} ${RADIO_STANDARD_LABEL[lower.wireless?.standard ?? 'lte']} / ` +
+            `${higher.name} ${RADIO_STANDARD_LABEL[higher.wireless?.standard ?? 'lte']}），` +
+            `按较低一代 ${formatSpeed(Math.min(nominalA, nominalB))} 协商 —— ` +
+            `5G 终端接入 4G 网络会回落到 LTE，4G 终端在 5G 网络下也只能用 LTE。`,
+        });
+      }
+    } else {
+      // SSID 必须一致才能真正关联 —— 否则客户端会一直"连不上"，这是最常见的无线故障
+      const ssidA = radioA?.ssid;
+      const ssidB = radioB?.ssid;
+      if (ssidA && ssidB && ssidA !== ssidB) {
+        issues.push({
+          code: 'SSID_MISMATCH',
+          level: 'error',
+          text:
+            `两端 SSID 不一致（${ssidA} ≠ ${ssidB}），无线客户端无法关联到该 AP。` +
+            '请把 SSID 改成一致（注意大小写敏感）。',
+        });
+      }
+    }
+
+    /*
+     * 覆盖判定（D-57）：关联是不是真的成立，取决于客户端在不在提供方的覆盖区域内。
+     *
+     * 判定口径是纯几何的：以**提供覆盖的一端**（`mode === 'ap'` 且启用覆盖）的
+     * 卡片中心为圆心，两端中心的距离按 `WORLD_UNITS_PER_METER` 换算成米。
+     * 因此"把设备拖出覆盖圈"与"把半径拖小"都会立刻让链路断开 —— 画布上看到的
+     * 形状就是判定用的形状。
+     *
+     * 两端都提供覆盖时（AP 之间做无线中继、基站之间），落在**任意一方**的
+     * 覆盖内即成立：中继场景里两台 AP 互为对端，不是"客户端连 AP"。
+     */
+    const providers = (
+      [
+        [devA, devB],
+        [devB, devA],
+      ] as [Device, Device][]
+    ).filter(([side]) => side.wireless?.mode === 'ap' && coverageEnabled(side.wireless.coverage));
+
+    if (providers.length > 0) {
+      const covered = providers.some(([side, peer]) =>
+        coverageContains(side.wireless?.coverage as RadioCoverage, deviceCenter(side), deviceCenter(peer)),
+      );
+      if (!covered) {
+        const [side, peer] = providers[0] as [Device, Device];
+        const coverage = side.wireless?.coverage as RadioCoverage;
+        const origin = deviceCenter(side);
+        const target = deviceCenter(peer);
+        const away = coverageDistanceOutsideM(coverage, origin, target);
+        const shapeNote =
+          coverage.shape === 'sector'
+            ? `（定向 ${coverage.angleDeg ?? 90}°，朝向 ${coverage.azimuthDeg ?? 0}°）`
+            : '';
+        issues.push({
+          code: 'WIRELESS_OUT_OF_COVERAGE',
+          level: 'error',
+          text:
+            `${peer.name} 不在 ${side.name} 的覆盖范围内${shapeNote}：` +
+            `相距 ${round1(distanceMeters(origin, target))} m，` +
+            `覆盖半径 ${coverage.radiusM} m，还差约 ${round1(away)} m。` +
+            '无线关联不成立 —— 请把设备拖进覆盖圈，或调大（转到）覆盖范围。',
+        });
+      }
     }
   } else {
     // 有线：min(端口A, 端口B, 线缆在该长度下的能力)

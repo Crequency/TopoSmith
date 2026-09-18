@@ -21,6 +21,7 @@ import {
   AlignStartHorizontal,
   AlignStartVertical,
   AlignVerticalDistributeCenter,
+  Antenna,
   Cable,
   Cctv,
   ChevronRight,
@@ -72,6 +73,7 @@ const KIND_ICON: Record<DeviceKind, IconNode> = {
   mobile: Smartphone,
   embedded: Cpu,
   ap: Wifi, // 无线接入点
+  'base-station': Antenna, // 蜂窝基站：塔顶天线
   olt: RadioTower, // 局端 OLT：接入机房的形象化
   cloud: Cloud,
   rack: Warehouse, // 机柜容器

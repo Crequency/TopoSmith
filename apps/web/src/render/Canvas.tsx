@@ -57,6 +57,20 @@ import {
   type FlowPath,
   type FlowSegmentSource,
 } from '../lib/flow';
+import {
+  COVERAGE_EDGE_TOL_PX,
+  COVERAGE_HANDLE_PX,
+  angleFromPointer,
+  azimuthFromPointer,
+  azimuthGrabOffset,
+  coverageHitTest,
+  coverageView,
+  coverageViews,
+  patchFromDrag,
+  radiusFromPointer,
+  type CoverageHandle,
+} from '../lib/coverage';
+import { drawSignals, signalLinks } from './signals';
 import { SpeedLegend } from '../components/SpeedLegend';
 import { ShortcutDialog } from '../components/ShortcutDialog';
 import { deviceSide, hasRearPorts, visiblePortGlyphs } from '../lib/ports';
@@ -156,7 +170,7 @@ function idsLabel(ids: string[]): string {
   return ids.length > 1 ? `移动 ${ids.length} 台设备` : '移动设备';
 }
 
-type DragMode = 'none' | 'pan' | 'device' | 'marquee' | 'label' | 'resize';
+type DragMode = 'none' | 'pan' | 'device' | 'marquee' | 'label' | 'resize' | 'coverage';
 
 interface DragState {
   mode: DragMode;
@@ -176,6 +190,11 @@ interface DragState {
   labelLinkId?: string;
   /** 正在调整宽度的设备（FR-49） */
   resizeDeviceId?: string;
+  /** 正在拖动的覆盖手柄所属设备（D-56） */
+  coverageDeviceId?: string;
+  coverageHandle?: CoverageHandle;
+  /** 抓取瞬间"指针方位角 − 扇形朝向"，拖朝向时用它保持不跳 */
+  coverageGrabOffsetDeg?: number;
 }
 
 /** 超过这个屏幕像素距离才算拖动（否则视为单击） */
@@ -183,6 +202,18 @@ const DRAG_THRESHOLD_PX = 4;
 
 /** 标签拖到中点附近就吸附回中线（屏幕像素）—— 让"拖回默认位置"是可靠的，而不是靠手感 */
 const LABEL_SNAP_PX = 10;
+
+/**
+ * 信号波的帧间隔（毫秒）。
+ *
+ * 不做 60 fps：信号点是"在流动"而不是"在高频闪"，15 fps 已经足够顺；
+ * 而覆盖层每帧的重绘成本与场景规模无关（只画几条关联的几个圆点），
+ * 因此这里省的是电池，不是画质。与 FR-50 的"静止时不烧 CPU"同一条思路：
+ * 屏幕上没有信号波时，循环会自己停下。
+ */
+const SIGNAL_FRAME_MS = 66;
+/** 信号点从一端流到另一端的周期（秒） */
+const SIGNAL_PERIOD_S = 2.2;
 
 /** 上一帧采样超过这么久就算"过期"：说明中间没有连续观察（FR-50） */
 const SWAY_SAMPLE_STALE_MS = 100;
@@ -225,6 +256,10 @@ export function TopologyCanvas() {
   const [hoverLabelId, setHoverLabelId] = useState<string | null>(null);
   /** 指针贴在某台设备右边缘上（可拖拽调宽，FR-49） */
   const [hoverResizeId, setHoverResizeId] = useState<string | null>(null);
+  /** 指针悬停/正在拖动的覆盖手柄（D-56） */
+  const [hoverCoverage, setHoverCoverage] = useState<{ deviceId: string; handle: CoverageHandle } | null>(
+    null,
+  );
   const [resizeDeviceId, setResizeDeviceId] = useState<string | null>(null);
   const [dragLabelId, setDragLabelId] = useState<string | null>(null);
   const [cursor, setCursor] = useState<Point | null>(null);
@@ -260,6 +295,16 @@ export function TopologyCanvas() {
   });
   const flowRuntime = useRef<FlowRuntime | null>(null);
   const renderRef = useRef<() => void>(() => {});
+
+  /* ── 信号波动画（独立覆盖层，见 render/signals.ts） ── */
+  const overlayRef = useRef<HTMLCanvasElement>(null);
+  const signalPhase = useRef(0);
+  const signalFrame = useRef(0);
+  const signalLastDraw = useRef(0);
+  /** 上一次覆盖层画出来的关联条数：0 表示屏幕上没有信号波，动画循环可以停掉 */
+  const signalVisible = useRef(0);
+  /** 系统的"降低动效"偏好：开启时只画一张静态图，不推进相位 */
+  const reducedMotion = useRef(false);
 
   /* ── 尺寸自适应 ── */
   useEffect(() => {
@@ -413,6 +458,96 @@ export function TopologyCanvas() {
     return () => cancelAnimationFrame(frame);
   }, [animation.playing, animation.rate, flowPath, diagResult]);
 
+  /* ── 信号波覆盖层：独立画布 + 按需启动的低频动画循环 ── */
+
+  /**
+   * 重画覆盖层，返回屏幕上真正画出来的关联条数。
+   *
+   * 覆盖层是**透明**的：它只负责"会动的那几个信号点/涟漪"，主场景透过来显示。
+   * 因此主场景每重画一次（相机变了、设备动了），它也必须重画一次 —— 否则
+   * 信号波会停在旧位置上。
+   */
+  const drawOverlay = useCallback((phase: number) => {
+    const canvas = overlayRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return 0;
+    const dpr = window.devicePixelRatio || 1;
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    const pixelWidth = Math.max(1, Math.floor(width * dpr));
+    const pixelHeight = Math.max(1, Math.floor(height * dpr));
+    if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+      canvas.width = pixelWidth;
+      canvas.height = pixelHeight;
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+    }
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return 0;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    const store = useApp.getState();
+    return drawSignals(ctx, {
+      world: store.world,
+      camera: store.viewport,
+      width,
+      height,
+      phase,
+    });
+  }, []);
+
+  const stepSignals = useCallback(
+    (now: number) => {
+      signalFrame.current = 0;
+      if (reducedMotion.current) return;
+      const elapsed = now - signalLastDraw.current;
+      if (elapsed < SIGNAL_FRAME_MS) {
+        signalFrame.current = requestAnimationFrame(stepSignals);
+        return;
+      }
+      signalLastDraw.current = now;
+      signalPhase.current = (signalPhase.current + elapsed / 1000 / SIGNAL_PERIOD_S) % 1;
+      signalVisible.current = drawOverlay(signalPhase.current);
+      // 屏幕上没有信号波就停下；下一次主场景重画（平移/缩放/改世界）会把它唤醒
+      if (signalVisible.current > 0) signalFrame.current = requestAnimationFrame(stepSignals);
+    },
+    [drawOverlay],
+  );
+
+  /** 启动信号波动画（幂等）。屏幕上没有可动的关联时不会启动 */
+  const kickSignals = useCallback(() => {
+    if (signalFrame.current !== 0 || reducedMotion.current) return;
+    if (signalLinks(useApp.getState().world).length === 0) return;
+    signalLastDraw.current = performance.now();
+    signalFrame.current = requestAnimationFrame(stepSignals);
+  }, [stepSignals]);
+
+  useEffect(
+    () => () => {
+      if (signalFrame.current !== 0) cancelAnimationFrame(signalFrame.current);
+      signalFrame.current = 0;
+    },
+    [],
+  );
+
+  // 系统偏好变化时立刻生效：开启降低动效 → 停掉循环（主场景那一帧仍是静态信号波）
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    reducedMotion.current = media.matches;
+    const onChange = () => {
+      reducedMotion.current = media.matches;
+      if (media.matches && signalFrame.current !== 0) {
+        cancelAnimationFrame(signalFrame.current);
+        signalFrame.current = 0;
+      } else if (!media.matches) {
+        kickSignals();
+      }
+      renderRef.current();
+    };
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, [kickSignals]);
+
   /**
    * 连线摆动的一个物理步（FR-50）。
    *
@@ -561,6 +696,11 @@ export function TopologyCanvas() {
         camera: viewport,
         cableSway: swayRef.current,
         resizeHandleId: resizeDeviceId ?? hoverResizeId,
+        coverageActive:
+          drag.current.mode === 'coverage' && drag.current.coverageDeviceId && drag.current.coverageHandle
+            ? { deviceId: drag.current.coverageDeviceId, handle: drag.current.coverageHandle }
+            : hoverCoverage,
+        coverageSelectedIds: selection.devices,
         width: size.width,
         height: size.height,
         selection,
@@ -578,8 +718,13 @@ export function TopologyCanvas() {
         pathStepByDevice,
         flow,
       });
+
+      // 信号波画在独立覆盖层上（见 render/signals.ts）：主场景一重画就得跟着重画
+      signalVisible.current = drawOverlay(reducedMotion.current ? 0 : signalPhase.current);
     };
     renderRef.current();
+    // 屏幕上有信号波才启动低频动画循环；没有就让它保持停止（不烧 CPU）
+    if (signalVisible.current > 0) kickSignals();
   });
 
   /*
@@ -645,6 +790,46 @@ export function TopologyCanvas() {
         };
         canvas.setPointerCapture(event.pointerId);
         return;
+      }
+    }
+
+    /*
+     * 覆盖手柄与圈边（D-56）：排在连线标签之后、卡片边缘之前。
+     *
+     * 两条优先级规则，都是为了"看到什么就操作什么"：
+     *   · **显式手柄**（画出来的小方块/圆点）永远可抓 —— 即使它压在某张卡片上；
+     *   · **隐形圈边**只在指针下方没有设备卡片时参与判定 —— 卡片压在圈边上时，
+     *     用户想拖的是卡片，而不是把覆盖范围改小。
+     */
+    if (!linkMode) {
+      const views = coverageViews(world.ordered);
+      if (views.length > 0) {
+        const coverageHit = coverageHitTest(views, point, COVERAGE_EDGE_TOL_PX / viewport.k, {
+          edgeAllowed: hit === undefined,
+          handleWorld: (COVERAGE_HANDLE_PX * 1.6) / viewport.k,
+        });
+        if (coverageHit) {
+          const provider = world.devices.get(coverageHit.view.deviceId);
+          if (provider) {
+            if (!selection.devices.includes(provider.id)) store.selectOneDevice(provider.id);
+            store.beginHistory('调整无线覆盖');
+            drag.current = {
+              mode: 'coverage',
+              // 抓圈边时可能是"点一下选中"，所以仍然走阈值判定
+              armed: false,
+              startX: pos.x,
+              startY: pos.y,
+              originX: 0,
+              originY: 0,
+              coverageDeviceId: provider.id,
+              coverageHandle: coverageHit.handle,
+              coverageGrabOffsetDeg: azimuthGrabOffset(coverageHit.view, point),
+            };
+            setHoverCoverage({ deviceId: provider.id, handle: coverageHit.handle });
+            canvas.setPointerCapture(event.pointerId);
+            return;
+          }
+        }
       }
     }
 
@@ -802,6 +987,18 @@ export function TopologyCanvas() {
       current.mode === 'none' ? deviceEdgeUnder(world, viewport, point.x, point.y) : null;
     setHoverResizeId(edgeUnder);
 
+    // 悬浮覆盖手柄/圈边 → 高亮 + 对应光标（D-56）
+    const coverageUnder =
+      current.mode === 'none' && !linkMode
+        ? coverageHitTest(coverageViews(world.ordered), point, COVERAGE_EDGE_TOL_PX / viewport.k, {
+            edgeAllowed: hoverTarget === undefined,
+            handleWorld: (COVERAGE_HANDLE_PX * 1.6) / viewport.k,
+          })
+        : null;
+    setHoverCoverage(
+      coverageUnder ? { deviceId: coverageUnder.view.deviceId, handle: coverageUnder.handle } : null,
+    );
+
     // 悬浮连线标签 → 高亮 + 手型光标（否则用户不知道标签可以拖，FR-46）
     const labelHovered =
       current.mode === 'label'
@@ -872,6 +1069,32 @@ export function TopologyCanvas() {
       setMarquee(normalizeBox(current.startWorld, point));
     }
 
+    /*
+     * 拖覆盖手柄（D-56）：半径 / 开合角 / 朝向，三种都走同一个"视图 → 新值 → 写回"路径。
+     * 每帧的写入都在 beginHistory 打开的事务里，整段拖动只算一条历史。
+     */
+    if (current.mode === 'coverage' && current.coverageDeviceId && current.coverageHandle) {
+      if (!current.armed) {
+        const travelled = Math.hypot(pos.x - current.startX, pos.y - current.startY);
+        if (travelled < DRAG_THRESHOLD_PX) return;
+        current.armed = true;
+      }
+      const device = world.devices.get(current.coverageDeviceId);
+      const view = device ? coverageView(device) : null;
+      if (!device || !view) return;
+      const patch =
+        current.coverageHandle === 'radius'
+          ? { radiusM: radiusFromPointer(view, point) }
+          : current.coverageHandle === 'angle'
+            ? { angleDeg: angleFromPointer(view, point) }
+            : { azimuthDeg: azimuthFromPointer(view, point, current.coverageGrabOffsetDeg ?? 0) };
+      const next = patchFromDrag(view, patch);
+      useApp.getState().patchDevice(device.id, (d) => {
+        d.wireless = { ...(d.wireless ?? { mode: 'ap' as const }), coverage: next };
+      });
+      return;
+    }
+
     // 拖右边缘调宽（FR-49）：宽度按世界坐标算，吸附开启时对齐到网格
     if (current.mode === 'resize' && current.resizeDeviceId) {
       const snapEnabled = useApp.getState().snapEnabled && !event.altKey;
@@ -938,6 +1161,11 @@ export function TopologyCanvas() {
     }
     if (current.mode === 'resize') {
       setResizeDeviceId(null);
+      useApp.getState().commitHistory();
+    }
+    if (current.mode === 'coverage') {
+      setHoverCoverage(null);
+      // 只是点了一下圈边（选中这台设备）而没有拖动 → commit 会自动丢弃这次事务
       useApp.getState().commitHistory();
     }
     if (current.mode === 'label') {
@@ -1030,15 +1258,23 @@ export function TopologyCanvas() {
         className={`block h-full w-full ${
           linkMode
             ? 'cursor-crosshair'
-            : drag.current.mode === 'resize' || hoverResizeId
-              ? 'cursor-col-resize'
-              : drag.current.mode === 'label' || hoverLabelId
-                ? drag.current.mode === 'label'
+            : drag.current.mode === 'coverage' || hoverCoverage
+              ? hoverCoverage?.handle === 'rotate' || drag.current.coverageHandle === 'rotate'
+                ? drag.current.mode === 'coverage'
                   ? 'cursor-grabbing'
                   : 'cursor-grab'
-                : drag.current.mode === 'pan' || spaceHeld
-                  ? 'cursor-grabbing'
-                  : 'cursor-default'
+                : hoverCoverage?.handle === 'angle' || drag.current.coverageHandle === 'angle'
+                  ? 'cursor-nwse-resize'
+                  : 'cursor-ew-resize'
+              : drag.current.mode === 'resize' || hoverResizeId
+                ? 'cursor-col-resize'
+                : drag.current.mode === 'label' || hoverLabelId
+                  ? drag.current.mode === 'label'
+                    ? 'cursor-grabbing'
+                    : 'cursor-grab'
+                  : drag.current.mode === 'pan' || spaceHeld
+                    ? 'cursor-grabbing'
+                    : 'cursor-default'
         }`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -1049,6 +1285,17 @@ export function TopologyCanvas() {
         onContextMenu={(event) => event.preventDefault()}
         onDragOver={(event) => event.preventDefault()}
         onDrop={onDrop}
+      />
+
+      {/*
+        信号波覆盖层（D-57）：独立画布，只画会动的无线信号。
+        `pointer-events-none` 是必须的 —— 它盖在整个画布上，一旦吃指针事件，
+        所有命中测试（设备、端口、标签、覆盖手柄）就全都收不到事件了。
+      */}
+      <canvas
+        ref={overlayRef}
+        aria-hidden
+        className="pointer-events-none absolute inset-0 block h-full w-full"
       />
 
       {/* 左上角：模式提示 */}

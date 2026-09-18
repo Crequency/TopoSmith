@@ -34,7 +34,7 @@
  */
 
 import { instantiate } from '@toposmith/catalog';
-import { SCHEMA_VERSION, type Cable, type Device, type Scenario } from '@toposmith/schema';
+import { SCHEMA_VERSION, omniCoverage, type Cable, type Device, type Scenario } from '@toposmith/schema';
 
 export function buildLoopScenario(): Scenario {
   const make = (key: string, id: string, name: string, x: number, y: number): Device =>
@@ -150,7 +150,8 @@ export function buildLoopScenario(): Scenario {
   // ── 两台 AP：同一 SSID；ap2 做成"中继"（sta 关联 ap1），同时又用网线接回交换机
   ap1.l3.interfaces = [{ id: 'l3-ap1', portId: 'port-ge1', ip: '192.168.10.2', prefix: 24 }];
   ap1.l3.defaultGateway = '192.168.10.1';
-  ap1.wireless = { mode: 'ap', ssid: 'TopoSmith-Warehouse', band: '5G', standard: '802.11ax', channel: 44 };
+  // 展开模板里的无线配置（含覆盖范围）；仓库比办公室开阔，覆盖放到 35 m
+  ap1.wireless = { ...ap1.wireless, mode: 'ap', ssid: 'TopoSmith-Warehouse', band: '5G', standard: '802.11ax', channel: 44, coverage: omniCoverage(35) };
   ap2.l3.interfaces = [{ id: 'l3-ap2', portId: 'port-ge1', ip: '192.168.10.3', prefix: 24 }];
   ap2.l3.defaultGateway = '192.168.10.1';
   ap2.wireless = { mode: 'sta', ssid: 'TopoSmith-Warehouse', band: '5G', standard: '802.11ax' };

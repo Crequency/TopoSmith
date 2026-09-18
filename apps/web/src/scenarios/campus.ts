@@ -82,7 +82,8 @@ export function buildCampusScenario(): Scenario {
   aps.forEach(([ap, ip, band, standard, channel], index) => {
     ap.l3.interfaces = [{ id: `l3-${ap.id}`, portId: 'port-ge1', ip, prefix: 24 }];
     ap.l3.defaultGateway = '172.16.0.1';
-    ap.wireless = { mode: 'ap', ssid: 'Campus', band, standard, channel };
+    // 展开模板里的无线配置：园区 AP 的缺省覆盖（30 m 全向）继续有效
+    ap.wireless = { ...ap.wireless, mode: 'ap', ssid: 'Campus', band, standard, channel };
     // 交换机 1 口留给出入口，AP 从 2 口开始
     void index;
   });

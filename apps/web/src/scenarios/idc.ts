@@ -221,7 +221,7 @@ export function buildIdcScenario(): Scenario {
   const officeAp = instantiate('ap', 'dev-office-ap', '办公区 AP', CORE_X + 360, 1180);
   officeAp.l3.interfaces = [{ id: 'l3-office-ap', portId: 'port-ge1', ip: '10.40.0.3', prefix: 24 }];
   officeAp.l3.defaultGateway = '10.40.0.1';
-  officeAp.wireless = { mode: 'ap', ssid: 'IDC-Ops', band: '5G', standard: '802.11ax', channel: 36 };
+  officeAp.wireless = { ...officeAp.wireless, mode: 'ap', ssid: 'IDC-Ops', band: '5G', standard: '802.11ax', channel: 36 };
 
   const officePc1 = instantiate('pc-desktop', 'dev-office-pc1', '办公区 PC 1', CORE_X, 1420);
   const officePc2 = instantiate('pc-desktop', 'dev-office-pc2', '办公区 PC 2', CORE_X + 220, 1420);

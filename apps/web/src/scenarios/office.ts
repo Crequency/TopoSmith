@@ -140,7 +140,8 @@ export function buildOfficeScenario(): Scenario {
   // ── AP：办公 WiFi（与办公 VLAN 同段，管理地址在办公网）
   ap.l3.interfaces = [{ id: 'l3-ap', portId: 'port-ge1', ip: '192.168.10.2', prefix: 24 }];
   ap.l3.defaultGateway = '192.168.10.1';
-  ap.wireless = { mode: 'ap', ssid: 'TopoSmith-Office', band: '5G', standard: '802.11ax', channel: 44 };
+  // 展开模板里的无线配置：覆盖范围（coverage）也要一起留着，否则画布上就没有覆盖圈了
+  ap.wireless = { ...ap.wireless, mode: 'ap', ssid: 'TopoSmith-Office', band: '5G', standard: '802.11ax', channel: 44 };
 
   // 注意：地址必须挂在**有连线的端口**（这里是机柜里那根 SFP+ DAC），
   // 挂在没有线缆的口上，ARP 永远解析不到（engine 的地址模型就是这么定的）
