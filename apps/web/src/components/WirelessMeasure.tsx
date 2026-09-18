@@ -12,58 +12,20 @@
  */
 
 import { useMemo, type ReactNode } from 'react';
-import {
-  formatDistanceM,
-  measureWireless,
-  type ChannelUsage,
-  type MeasuredSignal,
-  type SignalQuality,
-} from '@toposmith/anvil';
+import { formatDistanceM, measureWireless, type MeasuredSignal } from '@toposmith/anvil';
 import { RADIO_STANDARD_LABEL, formatSpeed } from '@toposmith/catalog';
 import { DEVICE_KIND_LABEL, type Point } from '@toposmith/schema';
 import { useApp } from '../state/store';
 import { Icon, uiIcon } from '../lib/icons';
-
-const QUALITY_LABEL: Record<SignalQuality, string> = {
-  excellent: '极佳',
-  good: '良好',
-  fair: '一般',
-  weak: '较弱',
-};
-
-const QUALITY_COLOR: Record<SignalQuality, string> = {
-  excellent: 'bg-emerald-500',
-  good: 'bg-sky-500',
-  fair: 'bg-amber-500',
-  weak: 'bg-rose-500',
-};
-
-const QUALITY_TEXT: Record<SignalQuality, string> = {
-  excellent: 'text-emerald-300',
-  good: 'text-sky-300',
-  fair: 'text-amber-300',
-  weak: 'text-rose-300',
-};
-
-/** 几何质量的相对位置（0–1）：用于画质量条，与引擎的档位口径一致 */
-const QUALITY_RATIO: Record<SignalQuality, number> = {
-  excellent: 1,
-  good: 0.66,
-  fair: 0.33,
-  weak: 0.15,
-};
-
-const INTERFERENCE_LABEL: Record<ChannelUsage['interference'], string> = {
-  none: '无重叠',
-  'co-channel': '同频干扰',
-  adjacent: '邻频重叠',
-};
-
-const BAND_LABEL: Record<NonNullable<MeasuredSignal['band']>, string> = {
-  '2.4G': '2.4 GHz',
-  '5G': '5 GHz',
-  '6G': '6 GHz',
-};
+import { ChannelChart } from './ChannelChart';
+import {
+  BAND_LABEL,
+  INTERFERENCE_LABEL,
+  QUALITY_COLOR,
+  QUALITY_LABEL,
+  QUALITY_RATIO,
+  QUALITY_TEXT,
+} from '../lib/wireless-labels';
 
 function bandLabel(signal: MeasuredSignal): string {
   if (signal.isCellular) return '蜂窝';
@@ -190,10 +152,11 @@ export function WirelessMeasurePanel({
           </div>
         ))}
 
-        {/* 信道占用 */}
+        {/* 信道占用与重叠图 */}
         {result.channels.length > 0 && (
           <div className="flex flex-col gap-1">
             <div className="text-[10px] font-semibold tracking-wide text-slate-400">信道情况</div>
+            <ChannelChart channels={result.channels} />
             <table className="w-full border-collapse text-[10px]">
               <thead>
                 <tr className="text-slate-500">

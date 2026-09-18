@@ -114,6 +114,8 @@ toposmith/
     ├─ lib/geometry.ts       对齐 / 分布 / 吸附 / 框选判定 + 机柜容器几何（纯函数，有单测）
     │                        （卡片足迹——尺寸 / 矩形 / 中心——在 @toposmith/schema，见 D-56）
     ├─ lib/coverage.ts       无线覆盖的交互几何：手柄位置 / 边缘命中 / 拖动换算（纯函数，有单测）
+    ├─ lib/channel-chart.ts   信道占用与重叠区间的布局计算（纯函数，有单测）
+    ├─ lib/wireless-labels.ts 无线测量的展示文案与配色（UI 常量，集中一份）
     ├─ lib/polyline.ts       折线弧长参数化：按比例取点 / 光标投影回比例（纯函数，有单测）
     ├─ lib/ports.ts          端口图元布局：尺寸分档 + 自动换行 + 命中测试（纯函数，有单测）
     ├─ lib/flow.ts           流向动画模型：路径构建、速率映射、推进与阻断（纯函数，有单测）
@@ -128,6 +130,7 @@ toposmith/
     ├─ render/signals.ts     无线信号波动画（独立覆盖层，低频按需，见 D-59）
     ├─ components/ContextMenu.tsx     画布右键菜单（只放真能执行的命令，FR-80）
     ├─ components/WirelessMeasure.tsx 无线测量面板（数据全部来自引擎，FR-80）
+    ├─ components/ChannelChart.tsx    信道重叠图（2.4G 穹顶曲线 / 正交频段占用条，FR-83）
     ├─ render/Canvas.tsx     画布组件 + 指针交互 + 多选 + 吸附 + 动画循环 + 两层画布调度
     ├─ components/           Toolbar / LeftPanel / RightSidebar / SidebarTabs（左栏页签）/
     │                        SidebarStack（右栏堆叠面板）/ sidebar-drop（跨栏落点判定）/
