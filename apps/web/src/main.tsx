@@ -7,7 +7,7 @@ import { pointAtRatio, nearestRatio } from './lib/polyline';
 import { linkPath, deviceRect } from './render/draw';
 import { coverageHandlePoint, coverageView } from './lib/coverage';
 import { measureWireless } from '@toposmith/anvil';
-import { signalLinks } from './render/signals';
+import { signalGeometry, signalLinks } from './render/signals';
 import { worldContentBounds } from './lib/fit';
 import { useApp } from './state/store';
 import './index.css';
@@ -109,6 +109,16 @@ if (import.meta.env.DEV) {
     },
     /** 画信号波的那些关联（条数 = 覆盖层上应该有几组信号波） */
     signalLinkIds: () => signalLinks(useApp.getState().world).map((link) => link.id),
+    /**
+     * 信号波的几何（屏幕坐标）：端到端脚本据此断言"以卡片中心为原点、沿直线、
+     * 平行弧线"这三件事，而不是靠肉眼看截图。
+     */
+    signalWaveFronts: (phase = 0) => {
+      const state = useApp.getState();
+      return signalLinks(state.world)
+        .map((link) => signalGeometry(state.world, state.viewport, link, phase))
+        .filter((item): item is NonNullable<typeof item> => item !== null);
+    },
     /** 标签当前贴在连线上的位置：弧长比例 + 到折线的距离（应当为 0，FR-46） */
     labelProjection: (linkId: string) => {
       const state = useApp.getState();
