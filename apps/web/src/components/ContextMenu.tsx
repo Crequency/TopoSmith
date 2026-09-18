@@ -96,6 +96,8 @@ export function ContextMenu({
         ref={ref}
         role="menu"
         aria-label="画布上下文菜单"
+        // 在菜单本身上右键：只拦住原生菜单（实测过：不拦的话这里会漏出浏览器菜单）
+        onContextMenu={(event) => event.preventDefault()}
         className="absolute z-30 flex w-60 flex-col rounded-lg border border-slate-700 bg-slate-900/98 p-1 shadow-2xl backdrop-blur"
         style={{ left, top }}
       >

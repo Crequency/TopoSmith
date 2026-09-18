@@ -29,7 +29,25 @@ export default function App() {
   }, []);
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-slate-950 text-slate-100">
+    <div
+      className="flex h-full w-full flex-col overflow-hidden bg-slate-950 text-slate-100"
+      /*
+       * 拦截浏览器原生右键菜单（FR-81）。
+       *
+       * 这是一个"应用"而不是网页：右键在画布上是上下文菜单，在两侧栏与工具栏上
+       * 也没有什么原生菜单该做的事，留着它只会盖住应用自己的界面。
+       * **输入框与可编辑区例外** —— 那里原生的右键菜单是"粘贴 IP / SSID"的入口，
+       * 拦掉它等于砍掉一个高频操作。
+       *
+       * 用冒泡末端的兜底而不是给每个组件都加一遍：新加的界面表面自动被覆盖，
+       * 不会出现"某处漏了、某处又拦了"的不一致。
+       */
+      onContextMenu={(event) => {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+        event.preventDefault();
+      }}
+    >
       <Toolbar />
 
       <div className="flex min-h-0 flex-1">

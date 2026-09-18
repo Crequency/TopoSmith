@@ -41,7 +41,7 @@ import {
   type WifiBand,
   type WirelessRadio,
 } from '@toposmith/schema';
-import { firstLinkOfPort, type World } from '@toposmith/anvil';
+import { firstLinkOfPort, measureWireless, type World } from '@toposmith/anvil';
 import {
   MAX_CARD_W,
   MAX_RACK_HEIGHT_U,
@@ -55,6 +55,7 @@ import {
   type AlignMode,
 } from '../lib/geometry';
 import { speedColor } from '../lib/speed-color';
+import { QUALITY_LABEL } from '../lib/wireless-labels';
 import { deviceIcon, Icon, uiIcon, type UiIconName } from '../lib/icons';
 import { defaultCoverageFor, isRackable } from '@toposmith/catalog';
 import { useApp } from '../state/store';
@@ -1256,16 +1257,19 @@ function DeviceInspector({ device, world }: { device: Device; world: World }) {
           </div>
 
           {cellular ? (
-            <Field label="PLMN" hint="蜂窝网络标识（如 46000）。两端都填且不一致 → 关联不成立">
-              <TextInput
-                value={device.wireless?.plmn ?? ''}
-                onChange={(plmn) =>
-                  patchDevice(device.id, (d) => {
-                    d.wireless = { ...(d.wireless ?? { mode: 'sta' }), plmn };
-                  })
-                }
-              />
-            </Field>
+            <>
+              <Field label="PLMN" hint="蜂窝网络标识（如 46000）。两端都填且不一致 → 关联不成立">
+                <TextInput
+                  value={device.wireless?.plmn ?? ''}
+                  onChange={(plmn) =>
+                    patchDevice(device.id, (d) => {
+                      d.wireless = { ...(d.wireless ?? { mode: 'sta' }), plmn };
+                    })
+                  }
+                />
+              </Field>
+              <NearbyPicker device={device} world={world} kind="plmn" />
+            </>
           ) : (
             <>
               <Field label="SSID" hint="STA 与 AP 的 SSID 必须完全一致（大小写敏感），否则链路不可用">
@@ -1278,6 +1282,7 @@ function DeviceInspector({ device, world }: { device: Device; world: World }) {
                   }
                 />
               </Field>
+              <NearbyPicker device={device} world={world} kind="ssid" />
               <div className="grid grid-cols-2 gap-2">
                 <Field label="频段">
                   <Select<WifiBand>
@@ -1320,6 +1325,120 @@ function DeviceInspector({ device, world }: { device: Device; world: World }) {
         线缆类别与长度在选中线缆后编辑。
       </p>
     </div>
+  );
+}
+
+/**
+ * 「从附近信号中选择」（FR-82）
+ *
+ * 手打 SSID 是无线配置里最容易出错的一步（大小写、少一个字母、2.4G/5G 用了两个名字）。
+ * 这里直接列出**这台设备位置能收到的**网络标识 —— 数据来自引擎的无线测量
+ * （`measureWireless` 在设备卡片中心测一次），因此"能收到的"与诊断里判定的
+ * "覆盖内 / 覆盖外"完全同源：
+ *
+ *  · SSID：只列 WiFi 信号；选中时**连频段一起同步**（客户端频段跟 AP 走，速率表才对得上）；
+ *  · PLMN：只列蜂窝信号；
+ *  · 一个都收不到时如实说明，并提示先检查与提供方的距离/覆盖半径 ——
+ *    这比让用户对着空列表猜要有用。
+ */
+function NearbyPicker({
+  device,
+  world,
+  kind,
+}: {
+  device: Device;
+  world: World;
+  kind: 'ssid' | 'plmn';
+}) {
+  const patchDevice = useApp((s) => s.patchDevice);
+  const showToast = useApp((s) => s.showToast);
+
+  const candidates = useMemo(() => {
+    const result = measureWireless(world, deviceCenter(device));
+    const seen = new Map<
+      string,
+      { value: string; band?: '2.4G' | '5G' | '6G'; channel?: number; quality: string; from: string; rssi: number }
+    >();
+    for (const signal of result.signals) {
+      if (signal.deviceId === device.id) continue; // 自己不算"附近"
+      if (kind === 'plmn' && !signal.isCellular) continue;
+      if (kind === 'ssid' && signal.isCellular) continue;
+      const value = kind === 'plmn' ? signal.plmn : signal.ssid;
+      if (!value) continue;
+      // 同一个 SSID 可能由多台 AP 广播：留质量最好的那台作为代表
+      if (seen.has(value)) continue;
+      seen.set(value, {
+        value,
+        band: signal.band,
+        channel: signal.channel,
+        quality: QUALITY_LABEL[signal.quality],
+        from: signal.deviceName,
+        rssi: signal.estimatedRssiDbm,
+      });
+    }
+    return [...seen.values()];
+  }, [world, device, kind]);
+
+  const current = kind === 'plmn' ? device.wireless?.plmn : device.wireless?.ssid;
+
+  const apply = (value: string) => {
+    const picked = candidates.find((item) => item.value === value);
+    if (!picked) return;
+    patchDevice(device.id, (d) => {
+      const next: WirelessRadio = { ...(d.wireless ?? { mode: 'sta' }) };
+      if (kind === 'plmn') {
+        next.plmn = picked.value;
+      } else {
+        next.ssid = picked.value;
+        // 频段跟着 AP 走：客户端频段决定速率表那一档，不同步就会出现"配了同一个 SSID
+        // 却按另一个频段的速率协商"的怪数字
+        if (picked.band) next.band = picked.band;
+      }
+      d.wireless = next;
+    });
+    showToast(
+      kind === 'plmn'
+        ? `已选择 PLMN ${picked.value}（来源：${picked.from}，${picked.quality} · ${picked.rssi} dBm）`
+        : `已选择 SSID「${picked.value}」（来源：${picked.from}，${picked.quality} · ${picked.band ?? '—'} · 信道 ${picked.channel ?? '—'} · ${picked.rssi} dBm），频段已同步。`,
+      'info',
+    );
+  };
+
+  const label = kind === 'plmn' ? '从附近网络中选择' : '从附近信号中选择';
+
+  if (candidates.length === 0) {
+    return (
+      <p className="rounded border border-slate-800 bg-slate-950/40 px-2 py-1 text-[10px] leading-snug text-slate-500">
+        这台设备的位置收不到任何{kind === 'plmn' ? '蜂窝网络' : 'WiFi 信号'}：
+        检查它是否落在提供方的覆盖范围内（可以拖覆盖圈，或把设备拖近一点）。
+      </p>
+    );
+  }
+
+  return (
+    <Field
+      label={label}
+      hint={
+        kind === 'plmn'
+          ? '列出这个位置能收到的蜂窝网络（PLMN）'
+          : '列出这个位置能收到的 SSID；选中会连频段一起同步'
+      }
+    >
+      <Select<string>
+        value={candidates.some((item) => item.value === current) ? (current as string) : ''}
+        options={[
+          { value: '', label: `选择…（可收到 ${candidates.length} 个）` },
+          ...candidates.map((item) => ({
+            value: item.value,
+            label:
+              kind === 'plmn'
+                ? `${item.value}（${item.quality} · ${item.rssi} dBm · ${item.from}）`
+                : `${item.value}（${item.quality} · ${item.band ?? '—'} · 信道 ${item.channel ?? '—'} · ${item.from}）`,
+          })),
+        ]}
+        onChange={apply}
+      />
+    </Field>
   );
 }
 
