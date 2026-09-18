@@ -76,6 +76,10 @@ interface Hop {
 
 ### 3.2 失败路径（每个都有独立测试用例，对应 FR-17 验收）
 
+无线这一类失败（`SSID_MISMATCH` / `RADIO_TECH_MISMATCH` / `CELLULAR_PLMN_MISMATCH` /
+`WIRELESS_OUT_OF_COVERAGE`）除了出现在证据链里，还会**写在画布标签上**（短原因，
+如「超出覆盖」）—— 无线关联不再画线之后，标签是那条关联唯一的铭牌（D-57）。
+
 | 码 | 级别 | 语义 | 典型场景 |
 |---|---|---|---|
 | `NO_SOURCE_ADDRESS` | error | 源设备无任何地址 | 终端未配置且未获取到 DHCP |
@@ -88,6 +92,9 @@ interface Hop {
 | `LINK_TOO_LONG` | error | 线缆超过该类别长度上限 | CAT6 拉 150 m |
 | `MEDIUM_MISMATCH` | error | 端口介质与线缆类别不匹配 | RJ45 ↔ SFP、PON ↔ 双绞线 |
 | `SSID_MISMATCH` | error | 无线两端 SSID 不一致 | STA 连不上 AP（大小写敏感） |
+| `RADIO_TECH_MISMATCH` | error | WiFi 与蜂窝不是同一套接入技术 | 只有 WiFi 的笔记本接在 4G/5G 基站上 |
+| `CELLULAR_PLMN_MISMATCH` | error | 蜂窝两端 PLMN 不一致 | 终端不会注册到别人的网络（如 46000 ≠ 46001） |
+| `WIRELESS_OUT_OF_COVERAGE` | error | 客户端不在提供方的覆盖范围内 | 设备被拖出覆盖圈、覆盖半径被拖小、落在定向扇区的背面 |
 | `VLAN_MISMATCH` | error | 两端不在同一广播域 | access VLAN 不一致 / trunk 未放行 |
 | `ARP_FAILED` | error | 域内无人持有该 IP | 目标未接入该 VLAN、网线插错 |
 | `NAT_MISSING` | error | 私网访问公网但未开 NAT | 光猫桥接模式直连公网 |
@@ -108,6 +115,7 @@ interface Hop {
 | `LINK_SPEED_LIMITED` | 链路降速（线缆能力限制） | CAT6 拉 60 m |
 | `LINK_SPEED_NEGOTIATED` | 两端端口速率不同，按较低者协商 | 2.5G 口接千兆口 |
 | `WIFI_SHARED_MEDIUM` | 无线是共享半双工介质 | 同一 AP 下多客户端 |
+| `CELLULAR_RADIO_DOWNGRADE` | 两端蜂窝世代不同，按低的一代回落 | 4G 终端在 5G 网络下只能用 LTE |
 | `L2_LOOP` | 检测到二层环路（附**闭合的环路径**与波及范围） | 双上行没做聚合 / 跳线插回自己 / 无线中继接回有线 |
 | `BROADCAST_STORM` | 广播风暴风险：以太网帧没有 TTL，广播帧沿环无限循环 | 同上的后果说明 + 已知简化披露 |
 | `KNOWN_SIMPLIFICATION` | 已知简化披露 | 时延/吞吐的估算口径 |

@@ -14,8 +14,10 @@ import type {
   DhcpPool,
   DnsServerConfig,
   PortSide,
+  RadioCoverage,
   WirelessRadio,
 } from '@toposmith/schema';
+import { omniCoverage } from '@toposmith/schema';
 import { makePorts, type PortSpec } from './ports';
 import { SPEED } from './speeds';
 
@@ -31,7 +33,7 @@ export type TemplateGroup =
 export const TEMPLATE_GROUPS: { id: TemplateGroup; label: string; hint: string }[] = [
   { id: 'access', label: '接入与出口', hint: '光猫 / OLT / 云' },
   { id: 'routing', label: '路由与交换', hint: '路由器 / 交换机' },
-  { id: 'wireless', label: '无线', hint: '无线 AP' },
+  { id: 'wireless', label: '无线', hint: '无线 AP / 4G / 5G 基站 / 5G CPE' },
   { id: 'computer', label: '计算机', hint: '台式 / 笔记本 / 服务器 …' },
   { id: 'mobile', label: '可移动设备', hint: '手机 / 平板' },
   { id: 'embedded', label: '嵌入式设备', hint: 'NAS / 摄像头 / IoT …' },
@@ -92,6 +94,29 @@ function wlan(role: PortSpec['role'], extra: Partial<PortSpec> = {}): PortSpec {
   return { name: 'WLAN', medium: 'wifi', speedMbps: 0, role, vlan: 1, ...extra };
 }
 
+/* ── 无线覆盖的缺省值 ── */
+
+/**
+ * 缺省覆盖半径（米）：按设备类型给一个贴近现实的起点（D-56）。
+ *
+ * 这些数值不是"精确的天线仿真"，而是**行业常识量级**：
+ *   家用网关   40 m —— 一台放在客厅的路由器，5 GHz 穿两堵墙大致就是这个量级
+ *   无线 AP    30 m —— 商用吸顶 AP 的典型覆盖半径
+ *   蜂窝基站  150 m —— 城区微站/小站口径（宏站可达数公里，但画布上没必要）
+ * 需要更远就在面板里调大，或者用定向把功率集中到一个方向。
+ */
+export const DEFAULT_COVERAGE_RADIUS_M: Partial<Record<DeviceKind, number>> = {
+  ont: 40,
+  router: 40,
+  ap: 30,
+  'base-station': 150,
+};
+
+/** 新建覆盖时的起点：全向 + 该类型的缺省半径 */
+export function defaultCoverageFor(kind: DeviceKind): RadioCoverage {
+  return omniCoverage(DEFAULT_COVERAGE_RADIUS_M[kind] ?? 30);
+}
+
 /** 终端默认走 DHCP（最贴近真实家庭/办公网络） */
 const DHCP_CLIENT: ClientAddressing = { mode: 'dhcp', dns: [] };
 
@@ -128,7 +153,14 @@ export const DEVICE_TEMPLATES: DeviceTemplate[] = [
       wlan('lan'),
     ],
     services: { nat: true, dhcp: { ...HOME_DHCP_POOL }, dns: { ...HOME_DNS } },
-    wireless: { mode: 'ap', ssid: 'TopoSmith-Home', band: '5G', standard: '802.11ax', channel: 36 },
+    wireless: {
+      mode: 'ap',
+      ssid: 'TopoSmith-Home',
+      band: '5G',
+      standard: '802.11ax',
+      channel: 36,
+      coverage: omniCoverage(DEFAULT_COVERAGE_RADIUS_M.ont as number),
+    },
     note: '路由模式：自己做 NAT 与 DHCP，是家用最常见形态。',
   },
   {
@@ -197,7 +229,14 @@ export const DEVICE_TEMPLATES: DeviceTemplate[] = [
       wlan('lan'),
     ],
     services: { nat: true, dhcp: { ...HOME_DHCP_POOL }, dns: { ...HOME_DNS } },
-    wireless: { mode: 'ap', ssid: 'TopoSmith-Router', band: '5G', standard: '802.11ax', channel: 44 },
+    wireless: {
+      mode: 'ap',
+      ssid: 'TopoSmith-Router',
+      band: '5G',
+      standard: '802.11ax',
+      channel: 44,
+      coverage: omniCoverage(DEFAULT_COVERAGE_RADIUS_M.router as number),
+    },
   },
   {
     key: 'switch-5-2.5g',
@@ -264,8 +303,87 @@ export const DEVICE_TEMPLATES: DeviceTemplate[] = [
     glyph: 'AP',
     builtinExtension: true,
     ports: [rj45('GE1', SPEED.eth2_5g, 'uplink'), wlan('lan')],
-    wireless: { mode: 'ap', ssid: 'TopoSmith-AP', band: '5G', standard: '802.11ax', channel: 149 },
-    note: '无线客户端与 AP 的 LAN 口在二层桥接，属同一广播域。',
+    wireless: {
+      mode: 'ap',
+      ssid: 'TopoSmith-AP',
+      band: '5G',
+      standard: '802.11ax',
+      channel: 149,
+      coverage: omniCoverage(DEFAULT_COVERAGE_RADIUS_M.ap as number),
+    },
+    note: '无线客户端与 AP 的 LAN 口在二层桥接，属同一广播域；覆盖圈默认 30 m 全向，可拖拽调整。',
+  },
+  {
+    key: 'bs-4g',
+    label: '4G 基站（LTE）',
+    group: 'wireless',
+    kind: 'base-station',
+    subtype: 'bs-4g',
+    model: 'eNodeB（LTE 微站）',
+    glyph: '4G',
+    rackableU: 8,
+    ports: [
+      sfp('SFP+1', 'SFP+ 10G 回传', SPEED.eth10g),
+      sfp('SFP+2', 'SFP+ 10G 回传', SPEED.eth10g),
+      rj45('GE1', SPEED.eth1g, 'lan', { name: 'GE1（回传/管理）' }),
+      wlan('lan'),
+    ],
+    wireless: {
+      mode: 'ap',
+      standard: 'lte',
+      plmn: '46000',
+      coverage: omniCoverage(DEFAULT_COVERAGE_RADIUS_M['base-station'] as number),
+    },
+    note:
+      '基站把无线客户端二层桥接到回传口（回传侧接核心网），二层行为与 AP 一致；' +
+      '覆盖默认全向 150 m（城区微站口径）。空口是彻底的共享介质：一个小区内所有终端分同一份带宽。',
+  },
+  {
+    key: 'bs-5g',
+    label: '5G 基站（NR）',
+    group: 'wireless',
+    kind: 'base-station',
+    subtype: 'bs-5g',
+    model: 'gNodeB（NR 微站）',
+    glyph: '5G',
+    rackableU: 8,
+    ports: [
+      sfp('SFP+1', 'SFP+ 25G 回传', SPEED.eth25g),
+      sfp('SFP+2', 'SFP+ 25G 回传', SPEED.eth25g),
+      rj45('GE1', SPEED.eth1g, 'lan', { name: 'GE1（回传/管理）' }),
+      wlan('lan'),
+    ],
+    wireless: {
+      mode: 'ap',
+      standard: 'nr',
+      plmn: '46000',
+      coverage: omniCoverage(DEFAULT_COVERAGE_RADIUS_M['base-station'] as number),
+    },
+    note:
+      '5G 单用户峰值按 NR 中频取 1 Gbps；真实小区里这个数字要所有人分。' +
+      '默认全向，城区常用三扇区 —— 把覆盖形状改成「定向 120°」就是一个扇区，' +
+      '三台基站朝 0°/120°/240° 就是一套三扇区站。',
+  },
+  {
+    key: 'cpe-5g',
+    label: '5G CPE（无线宽带）',
+    group: 'wireless',
+    kind: 'router',
+    model: '5G CPE（NR 转有线）',
+    glyph: 'CPE',
+    ports: [
+      rj45('GE1', SPEED.eth1g, 'lan'),
+      rj45('GE2', SPEED.eth1g, 'lan'),
+      rj45('GE3', SPEED.eth1g, 'lan'),
+      wlan('wan', { name: '5G NR' }),
+    ],
+    accessMode: 'route',
+    services: { nat: true, dhcp: { ...HOME_DHCP_POOL }, dns: { ...HOME_DNS } },
+    // 单无线口：蜂窝侧关联基站当上行。室内侧走有线 LAN 口（真实 CPE 也是这么接的）
+    wireless: { mode: 'sta', standard: 'nr', plmn: '46000' },
+    note:
+      '用无线口关联 5G 基站当上行，室内侧用 LAN 口接自己的交换机/AP：' +
+      '"没有固网的地方怎么上网"最常见的一种装法（FWA）。',
   },
 
   /* ── 计算机 ── */
@@ -478,7 +596,11 @@ export function instantiate(
     l3: { interfaces: [], staticRoutes: [] },
     services: t.services ? JSON.parse(JSON.stringify(t.services)) : {},
     client: t.client ? JSON.parse(JSON.stringify(t.client)) : undefined,
-    wireless: t.wireless ? { ...t.wireless } : undefined,
+    // coverage 必须深拷一层：浅拷贝会让所有实例共享同一个覆盖对象，
+    // 拖大一台 AP 的覆盖范围会连带改掉所有同型号 AP（D-56 的坑）
+    wireless: t.wireless
+      ? { ...t.wireless, coverage: t.wireless.coverage ? { ...t.wireless.coverage } : undefined }
+      : undefined,
     accessMode: t.accessMode,
     rack: t.rack ? { ...t.rack, flipped: false } : undefined,
     rackUnits: t.rackableU,

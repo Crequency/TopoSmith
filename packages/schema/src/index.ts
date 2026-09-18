@@ -24,6 +24,7 @@ export type DeviceKind =
   | 'mobile' // 可移动设备（随身）
   | 'embedded' // 嵌入式设备
   | 'ap' // 无线接入点（内置扩展）
+  | 'base-station' // 蜂窝基站（4G / 5G）
   | 'olt' // 局端 OLT（内置扩展）
   | 'cloud' // 云 / 互联网出口（内置扩展）
   | 'rack'; // 机柜容器（不是网络设备，只承载机架式设备）
@@ -40,7 +41,13 @@ export type MobileSubtype = 'phone' | 'tablet';
 
 export type EmbeddedSubtype = 'nas' | 'camera' | 'printer' | 'iot' | 'single-board';
 
-export type DeviceSubtype = ComputerSubtype | MobileSubtype | EmbeddedSubtype;
+export type BaseStationSubtype = 'bs-4g' | 'bs-5g';
+
+export type DeviceSubtype =
+  | ComputerSubtype
+  | MobileSubtype
+  | EmbeddedSubtype
+  | BaseStationSubtype;
 
 /** 设备在真实网络里的行为，由 kind 决定（docs/02-domain-model.md §2.1） */
 export interface DeviceBehavior {
@@ -53,6 +60,8 @@ export interface DeviceBehavior {
 export const DEVICE_BEHAVIOR: Record<DeviceKind, DeviceBehavior> = {
   switch: { l2Forwarding: true, l3Forwarding: false },
   ap: { l2Forwarding: true, l3Forwarding: false },
+  // 基站把无线客户端桥接到回程端口，二层行为与 AP 一致
+  'base-station': { l2Forwarding: true, l3Forwarding: false },
   router: { l2Forwarding: false, l3Forwarding: true },
   ont: { l2Forwarding: false, l3Forwarding: true },
   olt: { l2Forwarding: false, l3Forwarding: true },
@@ -72,6 +81,7 @@ export const DEVICE_KIND_LABEL: Record<DeviceKind, string> = {
   mobile: '可移动设备',
   embedded: '嵌入式设备',
   ap: '无线 AP',
+  'base-station': '蜂窝基站',
   olt: 'OLT 局端',
   cloud: '云 / 互联网',
   rack: '机柜',
@@ -90,6 +100,8 @@ export const DEVICE_SUBTYPE_LABEL: Record<DeviceSubtype, string> = {
   printer: '网络打印机',
   iot: 'IoT 传感器',
   'single-board': '树莓派 / 单板机',
+  'bs-4g': '4G 基站',
+  'bs-5g': '5G 基站',
 };
 
 /* ────────────────────────────── 端口 ────────────────────────────── */
@@ -261,12 +273,334 @@ export interface ClientAddressing {
 export type WifiBand = '2.4G' | '5G' | '6G';
 export type WifiStandard = '802.11n' | '802.11ac' | '802.11ax' | '802.11be';
 
+/** 蜂窝标准：LTE（4G）与 NR（5G） */
+export type CellularStandard = 'lte' | 'nr';
+
+/** 无线制式：WiFi 各代 + 蜂窝两代。速率协商按"两端能力取小"，与介质无关 */
+export type RadioStandard = WifiStandard | CellularStandard;
+
+export function isCellularStandard(standard?: RadioStandard): standard is CellularStandard {
+  return standard === 'lte' || standard === 'nr';
+}
+
+/**
+ * 覆盖形状：**全向**（以设备为圆心的圆）与**定向**（扇形）。
+ *
+ * 半径用**米**（物理事实，与线缆长度同一套单位），画布按固定比例绘制：
+ * `1 米 = 20 世界单位`（见下方 `WORLD_UNITS_PER_METER` 与 D-56）。
+ * 扇形用「朝向 + 开合角度」描述：朝向 0° 指向 +X（画布右方），顺时针为正
+ * （画布 Y 轴向下，与 atan2(dy, dx) 的自然方向一致）。
+ */
+export type CoverageShape = 'omni' | 'sector';
+
+export interface RadioCoverage {
+  shape: CoverageShape;
+  /** 覆盖半径（米） */
+  radiusM: number;
+  /** 扇形开合角度（度），仅 `shape === 'sector'` 有意义 */
+  angleDeg?: number;
+  /** 扇形朝向（度），仅 `shape === 'sector'` 有意义 */
+  azimuthDeg?: number;
+  /**
+   * 是否参与覆盖判定与绘制（缺省 true）。
+   * 关掉表示"这台设备我不关心覆盖范围"：既不判定、也不画，
+   * 其无线关联退回旧版行为（不做覆盖校验）。
+   */
+  enabled?: boolean;
+}
+
+export const MIN_COVERAGE_RADIUS_M = 1;
+export const MAX_COVERAGE_RADIUS_M = 5000;
+export const MIN_SECTOR_ANGLE_DEG = 5;
+export const MAX_SECTOR_ANGLE_DEG = 360;
+
+export function clampCoverageRadius(radiusM: number): number {
+  if (!Number.isFinite(radiusM)) return MIN_COVERAGE_RADIUS_M;
+  return Math.max(MIN_COVERAGE_RADIUS_M, Math.min(MAX_COVERAGE_RADIUS_M, radiusM));
+}
+
+export function clampSectorAngle(angleDeg: number): number {
+  if (!Number.isFinite(angleDeg)) return 90;
+  return Math.max(MIN_SECTOR_ANGLE_DEG, Math.min(MAX_SECTOR_ANGLE_DEG, angleDeg));
+}
+
+/* ──────────────────────── 画布比例与覆盖几何 ──────────────────────── */
+
+/**
+ * 画布比例：**1 米 = 20 世界单位**（1 世界单位 = 5 厘米）。
+ *
+ * 这个常数只服务于**无线覆盖**：半径是物理量（米），画布是示意图，
+ * 两者之间必须有且只有一个换算系数，否则"画出来的圈"与"判定用的圈"会不一致。
+ *
+ * 取 20 而不是 1 或 100 的理由（D-56）：预置场景里现有的无线关联距离落在
+ * 250–720 世界单位，按 20 u/m 折算是 12.5–36 米 —— 室内 AP 与终端的合理距离；
+ * 于是"室内 AP 覆盖 30 米、家用网关 40 米"这类真实取值不用改布局就能成立。
+ *
+ * 有线线缆**不参与**这个换算：线缆长度是用户声明的物理事实（`Cable.lengthM`），
+ * 与画布上画多长无关（画布不是等比图纸，见 docs/05-engine.md §6）。
+ */
+export const WORLD_UNITS_PER_METER = 20;
+
+export function metersToWorld(meters: number): number {
+  return meters * WORLD_UNITS_PER_METER;
+}
+
+export function worldToMeters(units: number): number {
+  return units / WORLD_UNITS_PER_METER;
+}
+
+/** 覆盖几何的规范形态：两个形状共用一套字段，缺省值在构造时补齐 */
+export interface CoverageGeometry {
+  shape: CoverageShape;
+  radiusM: number;
+  radiusWorld: number;
+  /** 扇形开合角度；全向恒为 360 */
+  angleDeg: number;
+  /** 扇形朝向；全向恒为 0（无意义） */
+  azimuthDeg: number;
+}
+
+export function omniCoverage(radiusM: number): RadioCoverage {
+  return { shape: 'omni', radiusM: clampCoverageRadius(radiusM) };
+}
+
+export function sectorCoverage(
+  radiusM: number,
+  angleDeg: number,
+  azimuthDeg = 0,
+): RadioCoverage {
+  return {
+    shape: 'sector',
+    radiusM: clampCoverageRadius(radiusM),
+    angleDeg: clampSectorAngle(angleDeg),
+    azimuthDeg: normalizeAzimuth(azimuthDeg),
+  };
+}
+
+/** 把（可能缺字段的）输入规范化成几何计算用的完整形态 */
+export function coverageGeometry(coverage: RadioCoverage): CoverageGeometry {
+  const sector = coverage.shape === 'sector';
+  const radiusM = clampCoverageRadius(coverage.radiusM);
+  return {
+    shape: coverage.shape,
+    radiusM,
+    radiusWorld: metersToWorld(radiusM),
+    angleDeg: sector ? clampSectorAngle(coverage.angleDeg ?? 90) : 360,
+    azimuthDeg: normalizeAzimuth(coverage.azimuthDeg ?? 0),
+  };
+}
+
+/** 覆盖是否启用（缺省启用） */
+export function coverageEnabled(coverage?: RadioCoverage): boolean {
+  return coverage !== undefined && coverage.enabled !== false;
+}
+
+/** 两点间的世界距离换算成米（覆盖判定的距离口径） */
+export function distanceMeters(a: Point, b: Point): number {
+  return worldToMeters(Math.hypot(b.x - a.x, b.y - a.y));
+}
+
+/** 从 origin 看向 point 的方位角（度，0° = +X，顺时针为正） */
+export function bearingDeg(origin: Point, point: Point): number {
+  return normalizeAzimuth((Math.atan2(point.y - origin.y, point.x - origin.x) * 180) / Math.PI);
+}
+
+/** 两个方位角之间的最小夹角（0–180 度） */
+export function angleDeltaDeg(a: number, b: number): number {
+  return Math.abs(((normalizeAzimuth(a) - normalizeAzimuth(b) + 540) % 360) - 180);
+}
+
+/**
+ * 点是否落在覆盖区域内。
+ *
+ * 判定口径（D-57）：以**覆盖提供方**（`mode === 'ap'` 且有覆盖的那一端）
+ * 的设备中心为原点，距离按 `WORLD_UNITS_PER_METER` 换算成米与半径比较；
+ * 扇形再要求方位角落在 `[azimuth - angle/2, azimuth + angle/2]` 内。
+ *
+ * 这是一个**纯几何**判定：没有墙、没有衰落、没有天线增益。
+ * 室内穿墙、5G 毫米波被遮挡这类物理效应一律不建模（见 docs/05-engine.md §6）。
+ */
+export function coverageContains(
+  coverage: RadioCoverage,
+  origin: Point,
+  point: Point,
+): boolean {
+  const geo = coverageGeometry(coverage);
+  if (Math.hypot(point.x - origin.x, point.y - origin.y) > geo.radiusWorld) return false;
+  if (geo.shape === 'omni') return true;
+  return angleDeltaDeg(bearingDeg(origin, point), geo.azimuthDeg) <= geo.angleDeg / 2;
+}
+
+/**
+ * 点距离覆盖区域的**最近边缘**还有多远（米）。
+ *
+ * 覆盖内返回 0（带符号的余量另有 `coverageMarginM`）；覆盖外返回正数，
+ * 用于回答用户最关心的那个问题："还差几米才算进去"。
+ */
+export function coverageDistanceOutsideM(
+  coverage: RadioCoverage,
+  origin: Point,
+  point: Point,
+): number {
+  const geo = coverageGeometry(coverage);
+  const distanceWorld = Math.hypot(point.x - origin.x, point.y - origin.y);
+  if (distanceWorld > geo.radiusWorld) return worldToMeters(distanceWorld - geo.radiusWorld);
+  if (geo.shape === 'omni') return 0;
+  // 在半径内但在扇形之外：给出"转过去还差多少度"，换算成半径处的弧长（米）
+  const delta = angleDeltaDeg(bearingDeg(origin, point), geo.azimuthDeg) - geo.angleDeg / 2;
+  if (delta <= 0) return 0;
+  return worldToMeters(((delta * Math.PI) / 180) * distanceWorld);
+}
+
+/**
+ * 覆盖余量（米）：正数表示在覆盖内且离边缘还有多远，负数表示还差多远进不去。
+ * 取距离余量与角度余量中更紧的一个。
+ */
+export function coverageMarginM(coverage: RadioCoverage, origin: Point, point: Point): number {
+  const geo = coverageGeometry(coverage);
+  const distanceWorld = Math.hypot(point.x - origin.x, point.y - origin.y);
+  const byDistance = worldToMeters(geo.radiusWorld - distanceWorld);
+  if (geo.shape === 'omni') return byDistance;
+  const delta = geo.angleDeg / 2 - angleDeltaDeg(bearingDeg(origin, point), geo.azimuthDeg);
+  const byAngle = worldToMeters(((delta * Math.PI) / 180) * Math.max(distanceWorld, 1));
+  return Math.min(byDistance, byAngle);
+}
+
+/* ──────────────────────── 卡片足迹（画布几何契约） ──────────────────────── */
+
+/**
+ * 卡片足迹：一台设备在画布上占多大。
+ *
+ * 放在 schema 而不是 web 里的原因很具体：**覆盖判定的原点是设备卡片的中心**，
+ * 而"中心在哪"由卡片尺寸决定。引擎要判、画布要画，两边必须用同一份足迹 ——
+ * 否则会出现"看着在圈里、判定说在圈外"这种最难查的不一致（D-56）。
+ */
+
+export interface Point {
+  x: number;
+  y: number;
+}
+
+export interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** 设备卡片尺寸（世界坐标） */
+export const NODE_W = 152;
+export const NODE_H = 86;
+
+/** 卡片宽度可调范围（FR-49） */
+export const MIN_CARD_W = 120;
+export const MAX_CARD_W = 420;
+
+export function clampCardWidth(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value)) return NODE_W;
+  return Math.round(Math.min(MAX_CARD_W, Math.max(MIN_CARD_W, value)));
+}
+
+/**
+ * 每 U 的高度：取 (NODE_H + 6) / 4 —— 一张标准卡片在视觉上等于 4U。
+ * 真实 19″ 机架的宽高比 482.6 / 44.45 ≈ 10.86，由 U 高反推设备宽度。
+ */
+const RACK_UNIT_H_RAW = (NODE_H + 6) / 4;
+export const RACK_UNIT_H = Math.round(RACK_UNIT_H_RAW);
+export const RACK_ASPECT = 482.6 / 44.45;
+export const RACK_EQUIPMENT_W = Math.round(RACK_UNIT_H_RAW * RACK_ASPECT);
+
+export const DEFAULT_RACK_UNITS = 4;
+export const MIN_RACK_UNITS = DEFAULT_RACK_UNITS;
+export const MAX_RACK_UNITS = 24;
+
+export interface CardSized {
+  rackUnits?: number;
+  mount?: { rackId: string; startU: number };
+  /** 自定义卡片宽度（世界坐标）；未设置则用 `NODE_W`（FR-49） */
+  cardWidth?: number;
+}
+
+/** 设备卡片占用的 U 数（缺省 4U） */
+export function rackUnitsOf(device: CardSized): number {
+  const units = Math.round(device.rackUnits ?? DEFAULT_RACK_UNITS);
+  if (!Number.isFinite(units)) return 1;
+  return Math.min(MAX_RACK_UNITS, Math.max(MIN_RACK_UNITS, units));
+}
+
+/** 占 units 个 U 的卡片高度（4U 恰好等于标准卡片高度） */
+export function cardHeightForUnits(units: number): number {
+  return Math.max(NODE_H, units * RACK_UNIT_H - 6);
+}
+
+/** 设备卡片实际高度：**按占用 U 数变化**，而不是固定 NODE_H */
+export function cardHeightOf(device: CardSized): number {
+  return cardHeightForUnits(rackUnitsOf(device));
+}
+
+/**
+ * 设备卡片实际宽度。
+ *
+ * 上架后跟随机柜的设备面板宽度（19 英寸设备宽度）；未上架时用 `device.cardWidth`，
+ * 缺省为标准卡片宽度。上架设备不参与宽度调整。
+ */
+export function cardWidthOf(device: CardSized): number {
+  if (device.mount) return RACK_EQUIPMENT_W;
+  return device.cardWidth === undefined ? NODE_W : clampCardWidth(device.cardWidth);
+}
+
+export function deviceRect(device: CardSized & Point): Box {
+  return { x: device.x, y: device.y, w: cardWidthOf(device), h: cardHeightOf(device) };
+}
+
+/**
+ * 设备卡片中心（世界坐标）。
+ *
+ * 覆盖圆的圆心、信号波动画的起点、流向动画的锚点都用它 ——
+ * 一处定义，三处一致。
+ */
+export function deviceCenter(device: CardSized & Point): Point {
+  const rect = deviceRect(device);
+  return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+}
+
+/** 机柜的 U 位几何（渲染与"拖放上架"共用） */
+export interface RackLike {
+  x: number;
+  y: number;
+  rack?: { heightU: number; flipped: boolean };
+}
+
+export function rackHeightU(rack: RackLike): number {
+  return Math.max(1, Math.round(rack.rack?.heightU ?? 12));
+}
+
+/** 朝向规范化到 [0, 360) */
+export function normalizeAzimuth(azimuthDeg: number): number {
+  if (!Number.isFinite(azimuthDeg)) return 0;
+  return ((azimuthDeg % 360) + 360) % 360;
+}
+
 export interface WirelessRadio {
   mode: 'ap' | 'sta';
   ssid?: string;
   band?: WifiBand;
-  standard?: WifiStandard;
+  /** 制式：WiFi 各代（2.4G/5G/6G 用 `band`）或蜂窝（`lte` / `nr`，不用 `band`） */
+  standard?: RadioStandard;
   channel?: number;
+  /**
+   * 仅蜂窝：网络标识（PLMN，形如 `46000`）。
+   *
+   * WiFi 靠 SSID 判断"是不是同一个网络"，蜂窝靠 PLMN + 制式。
+   * 两端都填了且不一致 → 关联不成立（终端不会注册到别人的网络）；
+   * 终端留空表示"任意网络都行"（例如国外漫游卡）。
+   */
+  plmn?: string;
+  /**
+   * 覆盖区域：只有**提供覆盖**的一端（`mode === 'ap'`：AP、家用网关的无线、基站）才有。
+   * 关联是否成立由引擎按几何判定（超出覆盖＝不成立，见 D-57）。
+   */
+  coverage?: RadioCoverage;
 }
 
 /* ────────────────────────────── 设备 ────────────────────────────── */

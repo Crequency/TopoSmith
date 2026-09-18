@@ -15,6 +15,7 @@ import { buildFtthScenario } from './ftth';
 import { buildCampusScenario } from './campus';
 import { buildIdcScenario } from './idc';
 import { buildLoopScenario } from './loop';
+import { buildCellularScenario } from './cellular';
 
 export { buildEmptyScenario, buildHomeScenario } from './home';
 
@@ -93,6 +94,18 @@ export const PRESETS: PresetMeta[] = [
     pitfall:
       '三处环都能修：拆掉冗余两根里的一根（或把两根都勾成链路聚合）、拔掉 GE7–GE8 那根自环跳线、撤掉二楼 AP 的无线中继 —— 修完环路归零。',
     build: buildLoopScenario,
+  },
+  {
+    key: 'cellular',
+    name: '蜂窝网络（4G/5G）',
+    summary:
+      '核心网 + 三层回传网 + 一台 4G 全向基站与两台 5G 定向基站：终端的关联由覆盖范围判定，' +
+      '在圈内、在扇形朝向内才成立；另有一台 5G CPE 用无线口做上行带一台台式机。',
+    highlights: ['4G/5G 基站', '全向与定向覆盖', '出圈即断', '5G CPE 无线宽带'],
+    pitfall:
+      '三处刻意留下的问题：一台手机落在 5G 扇区的背面（距离够近但方向不对）、一台平板跑出了所有覆盖圈、' +
+      '一台只有 WiFi 的笔记本接在 4G 基站上（制式不匹配）—— 把它们分别拖回扇区、拖回圈内、换成蜂窝终端即可恢复。',
+    build: buildCellularScenario,
   },
 ];
 

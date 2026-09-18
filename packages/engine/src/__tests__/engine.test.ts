@@ -493,3 +493,141 @@ describe('无线关联', () => {
     expect(codes(result.steps)).toContain('WIFI_SHARED_MEDIUM');
   });
 });
+
+/* ────────────────────────────── 无线覆盖 ────────────────────────────── */
+
+/**
+ * 覆盖判定（D-56 / D-57）。
+ *
+ * 断言的都是**几何口径**：半径按 `1 米 = 20 世界单位` 换算，圆心取设备卡片中心，
+ * 扇形按方位角判定。这些数字一旦漂移，"画出来的圈"和"判定用的圈"就不是同一个，
+ * 而那种不一致在界面上极难发现 —— 所以必须钉在测试里。
+ */
+describe('无线覆盖判定', () => {
+  function buildCoverageFixture(
+    apCoverage: NonNullable<NonNullable<Scenario['devices'][number]['wireless']>['coverage']>,
+    client: { dx: number; dy?: number; standard?: 'lte' | 'nr' | '802.11ax'; plmn?: string },
+    apStandard: 'lte' | 'nr' | '802.11ax' = '802.11ax',
+  ) {
+    const { scenario } = buildFixture();
+    const ap = instantiate(apStandard === '802.11ax' ? 'ap' : 'bs-5g', 'dev-ap', 'AP', 0, 0);
+    const laptop = instantiate('pc-laptop', 'dev-lap', '笔记本', client.dx, client.dy ?? 0);
+    ap.wireless = {
+      mode: 'ap',
+      ssid: apStandard === '802.11ax' ? 'Home' : undefined,
+      standard: apStandard,
+      plmn: apStandard === '802.11ax' ? undefined : '46000',
+      coverage: apCoverage,
+    };
+    laptop.wireless = {
+      mode: 'sta',
+      ssid: client.standard === 'lte' || client.standard === 'nr' ? undefined : 'Home',
+      standard: client.standard ?? '802.11ax',
+      plmn: client.plmn,
+    };
+    ap.l3.interfaces = [{ id: 'i7', portId: 'port-ge1', ip: '192.168.1.3', prefix: 24 }];
+    scenario.devices.push(ap, laptop);
+    scenario.cables.push(
+      cable('c7', 'cat6', 5, ['dev-sw', 'port-ge3'], ['dev-ap', 'port-ge1']),
+      cable('c8', 'wireless', 0, ['dev-ap', 'port-wlan'], ['dev-lap', 'port-wlan']),
+    );
+    return { scenario, world: buildWorld(scenario) };
+  }
+
+  it('客户端在覆盖圈内 → 关联成立', () => {
+    // 30 m = 600 世界单位；客户端中心距圆心 500 单位 = 25 m
+    const { world } = buildCoverageFixture({ shape: 'omni', radiusM: 30 }, { dx: 500 });
+    const link = world.links.find((l) => l.id === 'c8')!;
+    expect(link.up).toBe(true);
+    expect(link.issues.map((i) => i.code)).not.toContain('WIRELESS_OUT_OF_COVERAGE');
+  });
+
+  it('客户端被拖出覆盖圈 → 关联不成立，并说明差多远（WIRELESS_OUT_OF_COVERAGE）', () => {
+    const { world } = buildCoverageFixture({ shape: 'omni', radiusM: 30 }, { dx: 700 });
+    const link = world.links.find((l) => l.id === 'c8')!;
+    const issue = link.issues.find((i) => i.code === 'WIRELESS_OUT_OF_COVERAGE')!;
+    expect(link.up).toBe(false);
+    expect(link.speedMbps).toBe(0);
+    // 700 单位 = 35 m，半径 30 m → 还差 5 m
+    expect(issue.text).toContain('相距 35 m');
+    expect(issue.text).toContain('还差约 5 m');
+  });
+
+  it('半径按 1 米 = 20 世界单位换算：799 单位在内、801 单位在外', () => {
+    const inside = buildCoverageFixture({ shape: 'omni', radiusM: 40 }, { dx: 799 });
+    expect(inside.world.links.find((l) => l.id === 'c8')!.up).toBe(true);
+    const outside = buildCoverageFixture({ shape: 'omni', radiusM: 40 }, { dx: 801 });
+    expect(outside.world.links.find((l) => l.id === 'c8')!.up).toBe(false);
+  });
+
+  it('定向扇形只看朝向那一侧：正前方成立、侧后方不成立', () => {
+    const front = buildCoverageFixture(
+      { shape: 'sector', radiusM: 30, angleDeg: 90, azimuthDeg: 0 },
+      { dx: 500 },
+    );
+    expect(front.world.links.find((l) => l.id === 'c8')!.up).toBe(true);
+
+    // 客户端放在正上方（方位角 270°）→ 超出 ±45° 的扇形
+    const behind = buildCoverageFixture(
+      { shape: 'sector', radiusM: 30, angleDeg: 90, azimuthDeg: 0 },
+      { dx: 0, dy: -500 },
+    );
+    const link = behind.world.links.find((l) => l.id === 'c8')!;
+    expect(link.up).toBe(false);
+    expect(link.issues.map((i) => i.code)).toContain('WIRELESS_OUT_OF_COVERAGE');
+  });
+
+  it('关掉覆盖（enabled: false）→ 不做判定，退回到旧行为', () => {
+    const { world } = buildCoverageFixture(
+      { shape: 'omni', radiusM: 30, enabled: false },
+      { dx: 5000 },
+    );
+    const link = world.links.find((l) => l.id === 'c8')!;
+    expect(link.up).toBe(true);
+    expect(link.issues.map((i) => i.code)).not.toContain('WIRELESS_OUT_OF_COVERAGE');
+  });
+
+  it('WiFi 终端接不上蜂窝基站（RADIO_TECH_MISMATCH）', () => {
+    const { world } = buildCoverageFixture({ shape: 'omni', radiusM: 150 }, { dx: 500 }, 'nr');
+    const link = world.links.find((l) => l.id === 'c8')!;
+    expect(link.up).toBe(false);
+    expect(link.issues.map((i) => i.code)).toContain('RADIO_TECH_MISMATCH');
+  });
+
+  it('蜂窝：5G 终端接入 5G 基站按 NR 协商，并能桥接到回传侧拿到地址', () => {
+    const { world } = buildCoverageFixture(
+      { shape: 'omni', radiusM: 150 },
+      { dx: 500, standard: 'nr', plmn: '46000' },
+      'nr',
+    );
+    const link = world.links.find((l) => l.id === 'c8')!;
+    expect(link.up).toBe(true);
+    expect(link.speedMbps).toBe(1000);
+    // 基站把无线客户端桥接到回传口：手机应与有线终端同网段
+    expect(world.leases.get('dev-lap')?.ok).toBe(true);
+    expect(ping(world, 'dev-lap', '192.168.1.2').ok).toBe(true);
+  });
+
+  it('蜂窝：4G 终端接 5G 基站按 LTE 回落（CELLULAR_RADIO_DOWNGRADE）', () => {
+    const { world } = buildCoverageFixture(
+      { shape: 'omni', radiusM: 150 },
+      { dx: 500, standard: 'lte', plmn: '46000' },
+      'nr',
+    );
+    const link = world.links.find((l) => l.id === 'c8')!;
+    expect(link.up).toBe(true);
+    expect(link.speedMbps).toBe(150);
+    expect(link.issues.map((i) => i.code)).toContain('CELLULAR_RADIO_DOWNGRADE');
+  });
+
+  it('蜂窝：PLMN 不一致 → 关联不成立（CELLULAR_PLMN_MISMATCH）', () => {
+    const { world } = buildCoverageFixture(
+      { shape: 'omni', radiusM: 150 },
+      { dx: 500, standard: 'nr', plmn: '46001' },
+      'nr',
+    );
+    const link = world.links.find((l) => l.id === 'c8')!;
+    expect(link.up).toBe(false);
+    expect(link.issues.map((i) => i.code)).toContain('CELLULAR_PLMN_MISMATCH');
+  });
+});

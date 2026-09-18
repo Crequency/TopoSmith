@@ -1,25 +1,48 @@
 /**
- * 画布几何工具：对齐、分布、吸附、框选判定
+ * 画布几何工具：对齐、分布、吸附、框选判定、机柜容器几何
  *
  * 全部是纯函数（不依赖 Canvas、不依赖 World），因此可以被单元测试直接覆盖 ——
  * 几何逻辑的 bug 表现为"对不齐、吸不住"，靠肉眼调试代价极高。
+ *
+ * **卡片足迹（尺寸 / 卡片矩形 / 中心）不在这里，在 `@toposmith/schema`**：
+ * 覆盖判定要用"设备卡片中心"当圆心，引擎与画布必须共用同一份足迹，
+ * 因此它属于输入契约而不是渲染细节（D-56）。这里只做转发，
+ * 既让老的 `from '../lib/geometry'` 继续可用，又保证只有一处定义。
  */
 
-export interface Point {
-  x: number;
-  y: number;
-}
+import {
+  NODE_W,
+  RACK_EQUIPMENT_W,
+  cardHeightForUnits,
+  RACK_UNIT_H,
+  deviceRect,
+  rackHeightU,
+  type Box,
+  type CardSized,
+  type Point,
+  type RackLike,
+} from '@toposmith/schema';
 
-export interface Box {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
+export type { Box, CardSized, Point, RackLike };
 
-/** 设备卡片尺寸（世界坐标）；画布渲染与对齐计算共用同一份定义 */
-export const NODE_W = 152;
-export const NODE_H = 86;
+export {
+  DEFAULT_RACK_UNITS,
+  MAX_CARD_W,
+  MAX_RACK_UNITS,
+  MIN_CARD_W,
+  MIN_RACK_UNITS,
+  NODE_H,
+  NODE_W,
+  RACK_EQUIPMENT_W,
+  RACK_UNIT_H,
+  cardHeightForUnits,
+  cardHeightOf,
+  cardWidthOf,
+  clampCardWidth,
+  deviceRect,
+  rackHeightU,
+  rackUnitsOf,
+} from '@toposmith/schema';
 
 /** 网格间距（世界坐标） */
 export const GRID_SIZE = 8;
@@ -220,22 +243,6 @@ export function computeSnap(
 
 /* ────────────────────────────── 机柜容器几何（FR-36） ────────────────────────────── */
 
-/**
- * 每 U 的高度。
- *
- * 取 (NODE_H + 6) / 4 —— 也就是**一张标准卡片在视觉上等于 4U**，
- * 机柜看起来才是真实机柜的比例（此前 1U = 一整张卡片，格子太粗）。
- */
-const RACK_UNIT_H_RAW = (NODE_H + 6) / 4;
-export const RACK_UNIT_H = Math.round(RACK_UNIT_H_RAW);
-
-/**
- * 真实 19″ 机架的宽高比：设备宽 482.6 mm ÷ 1U 高 44.45 mm ≈ 10.86。
- *
- * 这个比例是"机柜看起来像不像真的"的关键 —— 之前的宽度按卡片宽度（152）反推，
- * 结果宽高比只有 6.6，机柜显得又瘦又高。现在由 U 高反推设备宽度。
- */
-export const RACK_ASPECT = 482.6 / 44.45;
 /** 机柜标题栏高度（含翻转按钮） */
 export const RACK_HEADER_H = 32;
 /** 机柜底部留白 */
@@ -245,70 +252,10 @@ export const RACK_PAD_X = 12;
 /** U 标号栏宽度（装在左右导轨上） */
 export const RACK_RAIL_W = 18;
 /**
- * 上架设备的面板宽度（世界坐标）＝ U 高 × 真实宽高比。
- * 也就是"19 英寸设备"的宽度：上架后的卡片宽度与它一致，而不是标准卡片的 152。
+ * 机柜外框宽度：真实机柜外宽约为设备宽的 1.24 倍（导轨占两侧）。
+ * 设备面板宽度 `RACK_EQUIPMENT_W` 来自 schema（卡片足迹契约）。
  */
-export const RACK_EQUIPMENT_W = Math.round(RACK_UNIT_H_RAW * RACK_ASPECT);
-/** 机柜外框宽度：真实机柜外宽约为设备宽的 1.24 倍（导轨占两侧） */
 export const RACK_W = Math.round(RACK_EQUIPMENT_W * 1.24);
-/** 设备默认占用 4U（正好一张标准卡片的高度） */
-export const DEFAULT_RACK_UNITS = 4;
-/** 卡片要放下图标/名称/类型/地址/端口面板，最小 4U；最大 24U */
-export const MIN_RACK_UNITS = DEFAULT_RACK_UNITS;
-export const MAX_RACK_UNITS = 24;
-
-/**
- * 卡片宽度可调范围（世界坐标，FR-49）。
- *
- * 下限 120：再窄就放不下"图标 + 名称 + 类型 + 地址"，端口也会被挤成两行以上；
- * 上限 420：比 19″ 设备面板（250）宽出一截，够放下长设备名与一排多口面板，
- * 又不至于宽到把画布变成一排横条。
- */
-export const MIN_CARD_W = 120;
-export const MAX_CARD_W = 420;
-
-/** 把任意输入钳制到合法的卡片宽度（非数字回落到默认宽度） */
-export function clampCardWidth(value: number | undefined): number {
-  if (value === undefined || !Number.isFinite(value)) return NODE_W;
-  return Math.round(Math.min(MAX_CARD_W, Math.max(MIN_CARD_W, value)));
-}
-
-export interface CardSized {
-  rackUnits?: number;
-  mount?: { rackId: string; startU: number };
-  /** 自定义卡片宽度（世界坐标）；未设置则用 `NODE_W`（FR-49） */
-  cardWidth?: number;
-}
-
-/** 设备卡片占用的 U 数（缺省 4U） */
-export function rackUnitsOf(device: CardSized): number {
-  const units = Math.round(device.rackUnits ?? DEFAULT_RACK_UNITS);
-  if (!Number.isFinite(units)) return 1;
-  return Math.min(MAX_RACK_UNITS, Math.max(MIN_RACK_UNITS, units));
-}
-
-/** 占 units 个 U 的卡片高度（4U 恰好等于标准卡片高度） */
-export function cardHeightForUnits(units: number): number {
-  return Math.max(NODE_H, units * RACK_UNIT_H - 6);
-}
-
-/** 设备卡片实际高度：**按占用 U 数变化**，而不是固定 NODE_H */
-export function cardHeightOf(device: CardSized): number {
-  return cardHeightForUnits(rackUnitsOf(device));
-}
-
-/**
- * 设备卡片实际宽度。
- *
- * 上架后**跟随机柜的设备面板宽度**（19 英寸设备宽度）—— 宽高都随机柜走，
- * 卡片才像"装在机柜里的设备"；未上架时用 `device.cardWidth`（用户可调，FR-49），
- * 缺省为标准卡片宽度。**上架设备不参与宽度调整**：它的宽度由机柜决定，
- * 允许改会造成"卡片比导轨还宽"这类自相矛盾的状态。
- */
-export function cardWidthOf(device: CardSized): number {
-  if (device.mount) return RACK_EQUIPMENT_W;
-  return device.cardWidth === undefined ? NODE_W : clampCardWidth(device.cardWidth);
-}
 
 /**
  * 可调宽度设备的右边缘（世界坐标，FR-49）。
@@ -344,16 +291,12 @@ export function cardResizeEdge(device: {
   return { x: rect.x + rect.w, top, bottom };
 }
 
-/** 设备卡片矩形（不含机柜容器） */
-export function deviceRect(device: CardSized & { x: number; y: number }): Box {
-  return { x: device.x, y: device.y, w: cardWidthOf(device), h: cardHeightOf(device) };
-}
-
 /**
  * 命中与框选用的矩形。
  *
  * 机柜是**高瘦容器**（24U 约 600 单位高、310 宽），沿用卡片的 152×86 会让
  * 标题栏的翻转按钮落在命中区之外而点不到 —— 这里按类型区分。
+ * 设备卡片矩形本身来自 schema 的 `deviceRect`（卡片足迹契约）。
  */
 export function hitRect(device: {
   x: number;
@@ -366,16 +309,6 @@ export function hitRect(device: {
 }): Box {
   if (device.kind === 'rack') return rackRect(device);
   return deviceRect(device);
-}
-
-export interface RackLike {
-  x: number;
-  y: number;
-  rack?: { heightU: number; flipped: boolean };
-}
-
-export function rackHeightU(rack: RackLike): number {
-  return Math.max(1, Math.round(rack.rack?.heightU ?? 12));
 }
 
 /** 机柜整体外框高度 */

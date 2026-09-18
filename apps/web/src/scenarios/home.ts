@@ -69,6 +69,8 @@ export function buildHomeScenario(): Scenario {
   ap.l3.interfaces = [{ id: 'l3-ap', portId: 'port-ge1', ip: '192.168.1.3', prefix: 24 }];
   // SSID 必须与终端一致，否则无线关联会被判为 SSID_MISMATCH（D-18）
   ap.wireless = {
+    // 展开模板里的无线配置：覆盖范围（30 m 全向）一起留着
+    ...ap.wireless,
     mode: 'ap',
     ssid: 'TopoSmith-Home',
     band: '5G',

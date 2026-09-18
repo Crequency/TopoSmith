@@ -61,6 +61,15 @@ export function dhcpLease(
     const entries = broadcastDomain(world, { deviceId: device.id, portId: port.id }, vlan);
 
     for (const serverDevice of world.ordered) {
+      /*
+       * 设备不会向自己申请地址。
+       *
+       * 这条规则是给"既是 DHCP 服务器又是 DHCP 客户端"的设备用的 ——
+       * 5G CPE、家用网关都是这种：LAN 侧自己是服务器，WAN 侧要向运营商申请地址。
+       * 没有它的话，CPE 会先在自己 LAN 口上"发现"自己的 DHCP 服务，
+       * 于是从自己的池里领一个内网地址当 WAN 地址 —— 一个自相矛盾的结论。
+       */
+      if (serverDevice.id === device.id) continue;
       const pool = serverDevice.services.dhcp;
       if (!pool?.enabled) continue;
 

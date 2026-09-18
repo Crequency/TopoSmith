@@ -473,3 +473,130 @@ describe('链路聚合数据的导入校验', () => {
     expect(result.errors.join(' ')).toContain('无线');
   });
 });
+
+/* ────────────────────────────── 无线覆盖 ────────────────────────────── */
+
+describe('无线覆盖（D-56 / D-57）', () => {
+  it('每个预置场景里的无线提供方都带覆盖信息（画布上都有圈可看）', () => {
+    for (const preset of PRESETS) {
+      const { scenario, world } = build(preset.key);
+      for (const device of scenario.devices) {
+        if (device.wireless?.mode !== 'ap') continue;
+        if (!device.ports.some((port) => port.medium === 'wifi')) continue;
+        expect(device.wireless.coverage, `${preset.key} / ${device.id} 缺少覆盖配置`).toBeDefined();
+        expect(device.wireless.coverage?.radiusM).toBeGreaterThan(0);
+        // coverage 必须是**每台设备各自的**，浅拷贝共享会导致改一台动全部（模板 instantiate 的坑）
+        const peer = scenario.devices.find(
+          (other) => other.id !== device.id && other.wireless?.coverage && other.kind === device.kind,
+        );
+        if (peer) expect(peer.wireless?.coverage).not.toBe(device.wireless.coverage);
+      }
+      // 覆盖信息齐全时，无线关联就不该再画成线（判据与绘制层共用）
+      for (const link of world.links) {
+        if (link.family !== 'wireless') continue;
+        expect(['a', 'b'].some((side) => {
+          const id = side === 'a' ? link.a.deviceId : link.b.deviceId;
+          const device = world.devices.get(id);
+          return device?.wireless?.coverage !== undefined;
+        })).toBe(true);
+      }
+    }
+  });
+
+  it('家庭场景：笔记本与手机都在 AP 的覆盖圈内（覆盖不改变既有的可达结论）', () => {
+    const { scenario, world } = build('home');
+    const ap = scenario.devices.find((d) => d.id === 'dev-ap')!;
+    for (const id of ['dev-laptop', 'dev-phone']) {
+      const link = world.links.find((l) => l.a.deviceId === id || l.b.deviceId === id)!;
+      expect(link.up).toBe(true);
+    }
+    expect(ap.wireless?.coverage?.shape).toBe('omni');
+  });
+});
+
+describe('蜂窝网络场景', () => {
+  it('结构：一台 4G 全向基站 + 两台 5G 定向基站，覆盖各自独立', () => {
+    const { scenario } = build('cellular');
+    const stations = scenario.devices.filter((d) => d.kind === 'base-station');
+    expect(stations).toHaveLength(3);
+    expect(stations.filter((d) => d.wireless?.standard === 'lte')).toHaveLength(1);
+    expect(stations.filter((d) => d.wireless?.standard === 'nr')).toHaveLength(2);
+    // 定向的两台朝向不同：一台朝右、一台朝下
+    const azimuths = stations
+      .map((d) => d.wireless?.coverage)
+      .filter((c) => c?.shape === 'sector')
+      .map((c) => c?.azimuthDeg);
+    expect(azimuths.sort()).toEqual([0, 90]);
+  });
+
+  it('在覆盖内的蜂窝终端按世代协商速率：4G 150 Mbps、5G 1000 Mbps', () => {
+    const { world } = build('cellular');
+    expect(world.links.find((l) => l.id === 'cbl-lte-phone-a')!.speedMbps).toBe(150);
+    expect(world.links.find((l) => l.id === 'cbl-nr-a-phone')!.speedMbps).toBe(1000);
+    expect(world.links.find((l) => l.id === 'cbl-nr-a-cpe')!.speedMbps).toBe(1000);
+  });
+
+  it('**有意留的三处问题**：扇区外、覆盖外、制式不对，各自报不同的原因码', () => {
+    const { world } = build('cellular');
+
+    const offSector = world.links.find((l) => l.id === 'cbl-nr-b-off')!;
+    expect(offSector.up).toBe(false);
+    expect(offSector.issues.map((i) => i.code)).toContain('WIRELESS_OUT_OF_COVERAGE');
+    // 距离确实在半径内（问题出在方向上），报文里要说清是定向
+    expect(offSector.issues[0]?.text).toContain('定向');
+
+    const outside = world.links.find((l) => l.id === 'cbl-nr-a-out')!;
+    expect(outside.up).toBe(false);
+    expect(outside.issues.map((i) => i.code)).toContain('WIRELESS_OUT_OF_COVERAGE');
+
+    const wifi = world.links.find((l) => l.id === 'cbl-lte-wifi')!;
+    expect(wifi.up).toBe(false);
+    expect(wifi.issues.map((i) => i.code)).toContain('RADIO_TECH_MISMATCH');
+  });
+
+  it('蜂窝终端能拿到地址、经核心路由器出网（基站是二层桥接，不是隧道）', () => {
+    const { world } = build('cellular');
+    expect(world.leases.get('dev-phone-4g-a')?.ok).toBe(true);
+    expect(ping(world, 'dev-phone-4g-a', '203.0.113.1').ok).toBe(true);
+    // 跑出覆盖的平板有静态地址，但关联不成立 —— 诊断报的是链路不可用
+    expect(ping(world, 'dev-pc', '10.10.0.222').ok).toBe(false);
+  });
+
+  it('5G CPE：无线口做上行、LAN 口带台式机（无线宽带 FWA）', () => {
+    const { world } = build('cellular');
+    // CPE 的 WAN 侧拿到的是蜂窝段地址（运营商静态开通），LAN 侧是自己的网关
+    const cpeAddrs = world.addresses.get('dev-cpe') ?? [];
+    expect(cpeAddrs.find((a) => a.portId === 'port-5g-nr')?.ip).toBe('10.10.0.120');
+    expect(cpeAddrs.find((a) => a.portId === 'port-ge1')?.ip).toBe('192.168.8.1');
+    // 台式机在 CPE 的内网里，能经 CPE 的 NAT 出公网
+    expect(ping(world, 'dev-pc', '192.168.8.1').ok).toBe(true);
+    expect(ping(world, 'dev-pc', '203.0.113.1').ok).toBe(true);
+  });
+
+  it('共享介质：同一个小区里的多台终端被算作并发客户端（带宽诊断按共享空口折扣）', () => {
+    const { world } = build('cellular');
+    const result = bandwidth(world, 'dev-phone-4g-a', '203.0.113.1');
+    expect(result.ok).toBe(true);
+    expect(result.metrics?.hasWireless).toBe(true);
+    // 两台 4G 手机 + 5G 扇区里那台手机同处一个广播域：空口是共享的
+    expect(result.metrics?.wirelessConcurrency).toBe(3);
+    // 4G 的标称 150 Mbps 是单用户峰值，真实吞吐还要再打共享与半双工的折扣
+    expect(result.metrics?.effectiveMbps).toBeLessThan(150);
+  });
+
+  it('把跑出覆盖的平板拖回扇区就能修好（这处坑是可修的）', () => {
+    const { scenario, world } = build('cellular');
+    const before = world.links.find((l) => l.id === 'cbl-nr-a-out')!;
+    expect(before.up).toBe(false);
+
+    // 拖到 5G 基站 A 的正前方（仍在 70 m 半径内）
+    const tablet = scenario.devices.find((d) => d.id === 'dev-tablet-out')!;
+    const station = scenario.devices.find((d) => d.id === 'dev-bs-5g-a')!;
+    tablet.x = station.x + 1200;
+    tablet.y = station.y;
+
+    const after = buildWorld(scenario).links.find((l) => l.id === 'cbl-nr-a-out')!;
+    expect(after.up).toBe(true);
+    expect(after.speedMbps).toBe(1000);
+  });
+});

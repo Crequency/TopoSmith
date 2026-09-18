@@ -79,7 +79,10 @@
 | `switch-5-2.5g` | 交换机（5 口 2.5G） | `switch` | GE1–GE5（2.5G）+ SFP+1、SFP+2（10G） | ✗ | — |
 | `switch-8-1g` | 交换机（8 口千兆） | `switch` | GE1–GE8（1G） | ✗ | — |
 | `switch-24-1g` | 交换机（24 口千兆 + 2×SFP+） | `switch` | GE1–GE24（1G）+ SFP+1、SFP+2（10G） | ✗ | — |
-| `ap` | 无线 AP | `ap` | GE1（2.5G 上联）+ WLAN（802.11ax） | ✗ | — |
+| `ap` | 无线 AP | `ap` | GE1（2.5G 上联）+ WLAN（802.11ax，全向 30 m） | ✗ | — |
+| `bs-4g` | 4G 基站（LTE） | `base-station` / `bs-4g` | SFP+1、SFP+2（10G 回传）+ GE1（1G 回传/管理）+ WLAN（LTE，全向 150 m） | ✗ | — |
+| `bs-5g` | 5G 基站（NR） | `base-station` / `bs-5g` | SFP+1、SFP+2（25G 回传）+ GE1（1G 回传/管理）+ WLAN（NR，全向 150 m） | ✗ | — |
+| `cpe-5g` | 5G CPE（无线宽带） | `router` | GE1–GE3（1G LAN）+ 5G NR 无线口（关联基站） | ✅ | NAT ✅ / DHCP ✅ |
 | `pc-desktop` | 台式机 | `computer` / `desktop` | GE1（1G） | ✗ | — |
 | `pc-laptop` | 笔记本 | `computer` / `laptop` | GE1（1G）+ WLAN（ax） | ✗ | — |
 | `pc-tablet` | 平板（计算机类） | `computer` / `tablet` | WLAN（ax） | ✗ | — |
@@ -93,6 +96,13 @@
 | `printer` | 网络打印机 | `embedded` / `printer` | GE1（1G）+ WLAN（n） | ✗ | — |
 | `iot` | IoT 传感器 | `embedded` / `iot` | WLAN（n） | ✗ | — |
 | `raspberrypi` | 树莓派 | `embedded` / `single-board` | GE1（1G）+ WLAN（ac） | ✗ | — |
+
+**无线覆盖的缺省值**（`DEFAULT_COVERAGE_RADIUS_M`，D-56）：
+家用网关（`ont` / `router`）40 m、无线 AP 30 m、蜂窝基站 150 m，形状都是全向。
+这些是行业常识量级（吸顶 AP 的典型覆盖、城区微站口径），不是天线仿真；
+要更远就在覆盖面板里调大，或者改成定向把功率集中到一个方向。
+定向扇形的三扇区站用**三台基站**表达（分别转 0°/120°/240°）——
+一台设备一个覆盖区域，不引入"一台设备多个扇区"的复合对象。
 
 **关于"计算机"与"可移动设备"的分类**：按用户给定清单，`computer` 与 `mobile` 是两个 kind，
 即使"平板"同时出现在两处——这是**用户的心智模型**（固定办公设备 vs 随身携带设备），

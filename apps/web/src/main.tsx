@@ -5,6 +5,8 @@ import { cardWidthOf, deviceFlipButtonRect, rackFlipButtonRect } from './lib/geo
 import { portLayout } from './lib/ports';
 import { pointAtRatio, nearestRatio } from './lib/polyline';
 import { linkPath, deviceRect } from './render/draw';
+import { coverageHandlePoint, coverageView } from './lib/coverage';
+import { signalLinks } from './render/signals';
 import { worldContentBounds } from './lib/fit';
 import { useApp } from './state/store';
 import './index.css';
@@ -72,6 +74,28 @@ if (import.meta.env.DEV) {
       const device = useApp.getState().world.devices.get(deviceId);
       return device ? device.ports.some((port) => port.side === 'rear') : null;
     },
+    /** 覆盖区域的几何（世界坐标）：端到端脚本按真实圆心/半径点击手柄（D-56） */
+    coverageGeometry: (deviceId: string) => {
+      const device = useApp.getState().world.devices.get(deviceId);
+      const view = device ? coverageView(device) : null;
+      if (!view) return null;
+      return {
+        center: view.center,
+        radiusWorld: view.radiusWorld,
+        radiusM: view.coverage.radiusM,
+        shape: view.shape,
+        angleDeg: view.angleDeg,
+        azimuthDeg: view.azimuthDeg,
+      };
+    },
+    /** 覆盖手柄的世界坐标（拖拽脚本据此按住它） */
+    coverageHandleAt: (deviceId: string, handle: 'radius' | 'angle' | 'rotate', side: 1 | -1 = 1) => {
+      const device = useApp.getState().world.devices.get(deviceId);
+      const view = device ? coverageView(device) : null;
+      return view ? coverageHandlePoint(view, handle, side) : null;
+    },
+    /** 画信号波的那些关联（条数 = 覆盖层上应该有几组信号波） */
+    signalLinkIds: () => signalLinks(useApp.getState().world).map((link) => link.id),
     /** 标签当前贴在连线上的位置：弧长比例 + 到折线的距离（应当为 0，FR-46） */
     labelProjection: (linkId: string) => {
       const state = useApp.getState();
