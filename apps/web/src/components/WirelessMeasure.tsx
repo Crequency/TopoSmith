@@ -125,7 +125,7 @@ export function WirelessMeasurePanel({
         <div className="rounded border border-slate-800 bg-slate-950/60 p-2 leading-snug text-slate-300">
           {result.signals.length === 0 ? (
             <>
-              这一点收不到任何无线信号：附近没有**启用覆盖**的无线设备，或者测量点落在它们的覆盖范围之外。
+              这一点收不到任何无线信号：附近没有启用覆盖的无线设备，或者测量点落在它们的覆盖范围之外。
             </>
           ) : (
             <>
