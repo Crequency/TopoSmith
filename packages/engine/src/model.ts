@@ -175,10 +175,26 @@ export function negotiateLink(
     speed = Math.min(nominalA, nominalB);
     duplex = 'half';
     if (speed === 0) {
+      /*
+       * 报文必须**点名是哪一端**缺制式。
+       *
+       * 这句原本只说"请在设备面板中设置无线标准"，用户看到后要自己把两端都点开找 ——
+       * 而面板里那个下拉此前还会假装默认是 802.11ax（显示值 ≠ 存储值），
+       * 于是"看着配了、引擎说没配"。现在两端都点名，面板也不再假装（FR-78）。
+       */
+      const missing = [
+        { device: devA, port: portA, standard: radioA?.standard },
+        { device: devB, port: portB, standard: radioB?.standard },
+      ].filter((side) => !side.standard);
+      const who = missing.map((side) => `${side.device.name}（${side.port.name}）`).join('、');
       issues.push({
         code: 'WIFI_SHARED_MEDIUM',
         level: 'warn',
-        text: '无线端口缺少制式配置，无法协商速率，按 0 处理。请在设备面板中设置无线标准。',
+        text:
+          `${missing.length > 1 ? '两端都' : ''}没有设置无线制式：${who}。` +
+          '制式决定标称速率，缺了它只能按 0 处理（链路仍算通，但速率未知）。' +
+          '在设备面板的「无线」一节里选一个制式即可 —— WiFi 设备选 802.11 各代，' +
+          '蜂窝设备选 LTE（4G）或 NR（5G）。',
       });
     }
 
@@ -231,6 +247,31 @@ export function negotiateLink(
         });
       }
     } else {
+      /*
+       * WiFi 客户端必须**填了 SSID** 才谈得上关联。
+       *
+       * 没有 SSID 的客户端在真机上扫描不到任何网络。这里给 warn 而不是 error：
+       * 它属于"配置还没填完"，不是"配置互相矛盾"—— 但必须在结论里说清楚，
+       * 否则用户会拿着一个 1201 Mbps 的数字以为已经连上了（FR-78）。
+       * 蜂窝终端不走这条路：它靠 PLMN，本来就没有 SSID。
+       */
+      for (const [device, port, radio] of [
+        [devA, portA, radioA],
+        [devB, portB, radioB],
+      ] as const) {
+        if (radio?.mode !== 'sta') continue;
+        if (!radio.standard || isCellularStandard(radio.standard)) continue;
+        if (radio.ssid) continue;
+        issues.push({
+          code: 'SSID_MISSING',
+          level: 'warn',
+          text:
+            `${device.name}（${port.name}）是 WiFi 客户端但没有填 SSID：` +
+            '真机上它不会关联到任何 AP。请把 SSID 填成与 AP 完全一致（大小写敏感）；' +
+            '本工具暂按"已关联"给出速率。',
+        });
+      }
+
       // SSID 必须一致才能真正关联 —— 否则客户端会一直"连不上"，这是最常见的无线故障
       const ssidA = radioA?.ssid;
       const ssidB = radioB?.ssid;

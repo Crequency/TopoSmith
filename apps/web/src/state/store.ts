@@ -47,6 +47,7 @@ import {
   type Port,
   type PortMedium,
   type PortRole,
+  type WirelessRadio,
   type PortSide,
   type Scenario,
 } from '@toposmith/schema';
@@ -942,15 +943,32 @@ export const useApp = create<AppState>((set, get) => {
         vlan: 1,
         module: defaultPortModule(medium),
       };
+      /*
+       * 手动加出来的**无线口必须带上一份无线配置**。
+       *
+       * 真实设备不存在"有射频但没有任何制式"的状态，而目录模板里的无线口都自带制式；
+       * 只有"手动加口"这条路径会造出这种设备 —— 于是它的无线关联会被判成
+       * "缺少制式配置、速率按 0"，用户却在自己刚加的口上找不到该改哪里（FR-78）。
+       * 这里补一份最小可用的默认（客户端 + WiFi 6 + 5GHz），SSID 留空由用户填。
+       */
+      const needsRadioConfig = medium === 'wifi' && !device.wireless;
+      const radio: WirelessRadio = { mode: 'sta', standard: '802.11ax', band: '5G' };
       mutate(
         (draft) => {
           const target = draft.devices.find((d) => d.id === deviceId);
-          if (target) target.ports.push(port);
+          if (!target) return;
+          target.ports.push(port);
+          if (needsRadioConfig) target.wireless = { ...radio };
         },
         { label: `为 ${device.name} 添加端口 ${name}` },
       );
       set({ selection: { devices: [], cables: [], port: { deviceId, portId: id } } });
-      get().showToast(`已添加端口 ${name}（${medium}）。`, 'info');
+      get().showToast(
+        needsRadioConfig
+          ? `已添加端口 ${name}（无线）。已为它补上默认无线配置（客户端 / WiFi 6 / 5GHz），SSID 请在设备面板里填成与 AP 一致。`
+          : `已添加端口 ${name}（${medium}）。`,
+        'info',
+      );
     },
 
     removePort: (deviceId, portId) => {

@@ -79,6 +79,27 @@ describe('端口增删（FR-38）', () => {
     expect(added.module).toBe('SFP+ 10G');
   });
 
+  it('给没有无线配置的设备加无线口 → 自动补上默认无线配置（FR-78）', () => {
+    // dev-pc 是台式机：模板里只有电口，没有 wireless
+    expect(state().world.devices.get('dev-pc')!.wireless).toBeUndefined();
+    state().addPort('dev-pc', { medium: 'wifi' });
+    const pc = state().world.devices.get('dev-pc')!;
+    expect(pc.ports.some((port) => port.medium === 'wifi')).toBe(true);
+    // 有射频就该有制式：否则会连出一条"速率 0、还找不到该改哪里"的无线关联
+    expect(pc.wireless?.standard).toBe('802.11ax');
+    expect(pc.wireless?.mode).toBe('sta');
+    // SSID 留空由用户填（自动猜一个 SSID 只会在对端配错时更难查）
+    expect(pc.wireless?.ssid).toBeUndefined();
+  });
+
+  it('已经有无线配置的设备加无线口 → 不动原有配置', () => {
+    const before = state().world.devices.get('dev-laptop')!.wireless;
+    state().addPort('dev-laptop', { medium: 'wifi' });
+    const after = state().world.devices.get('dev-laptop')!.wireless;
+    expect(after?.ssid).toBe(before?.ssid);
+    expect(after?.standard).toBe(before?.standard);
+  });
+
   it('删除端口会连带移除挂在其上的连线', () => {
     const attached = state().world.linksByPort.get('dev-sw:port-ge2') ?? [];
     expect(attached.length).toBe(1);

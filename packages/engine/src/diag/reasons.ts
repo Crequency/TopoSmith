@@ -32,6 +32,8 @@ export type ReasonCode =
    */
   | 'WIFI_SHARED_MEDIUM'
   | 'CELLULAR_RADIO_DOWNGRADE'
+  /** 无线客户端没有配置 SSID（配置还没填完，不是配置矛盾） */
+  | 'SSID_MISSING'
   | 'L2_LOOP'
   | 'BROADCAST_STORM'
   | 'KNOWN_SIMPLIFICATION'
@@ -68,6 +70,7 @@ export const REASON_TITLE: Partial<Record<ReasonCode, string>> = {
   LINK_SPEED_NEGOTIATED: '链路按较低速率协商',
   WIFI_SHARED_MEDIUM: '无线为共享半双工介质',
   CELLULAR_RADIO_DOWNGRADE: '蜂窝世代不同（按低一代回落）',
+  SSID_MISSING: '无线客户端没有填 SSID',
   L2_LOOP: '检测到二层环路',
   BROADCAST_STORM: '广播风暴风险',
   KNOWN_SIMPLIFICATION: '已知简化',
