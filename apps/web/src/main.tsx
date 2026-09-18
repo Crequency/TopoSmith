@@ -6,6 +6,7 @@ import { portLayout } from './lib/ports';
 import { pointAtRatio, nearestRatio } from './lib/polyline';
 import { linkPath, deviceRect } from './render/draw';
 import { coverageHandlePoint, coverageView } from './lib/coverage';
+import { measureWireless } from '@toposmith/anvil';
 import { signalLinks } from './render/signals';
 import { worldContentBounds } from './lib/fit';
 import { useApp } from './state/store';
@@ -73,6 +74,18 @@ if (import.meta.env.DEV) {
     deviceHasRearPorts: (deviceId: string) => {
       const device = useApp.getState().world.devices.get(deviceId);
       return device ? device.ports.some((port) => port.side === 'rear') : null;
+    },
+    /** 无线信号测量（FR-80）：端到端脚本用它核对面板上的数字与引擎一致 */
+    measureAt: (x: number, y: number) => {
+      const world = useApp.getState().world;
+      const point = { x, y };
+      const result = measureWireless(world, point);
+      return {
+        signals: result.signals,
+        channels: result.channels,
+        best: result.best,
+        notes: result.notes,
+      };
     },
     /** 覆盖区域的几何（世界坐标）：端到端脚本按真实圆心/半径点击手柄（D-56） */
     coverageGeometry: (deviceId: string) => {

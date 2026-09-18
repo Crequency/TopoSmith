@@ -22,6 +22,8 @@ import {
   AlignStartVertical,
   AlignVerticalDistributeCenter,
   Antenna,
+  Maximize2,
+  Ruler,
   Cable,
   Cctv,
   ChevronRight,
@@ -132,7 +134,9 @@ export type UiIconName =
   | 'flip'
   | 'help'
   | 'chevron-right'
-  | 'search';
+  | 'search'
+  | 'measure'
+  | 'maximize';
 
 const UI_ICON: Record<UiIconName, IconNode> = {
   'align-left': AlignStartVertical,
@@ -152,6 +156,8 @@ const UI_ICON: Record<UiIconName, IconNode> = {
   help: CircleHelp,
   'chevron-right': ChevronRight,
   search: Search,
+  measure: Ruler, // "测量这一点"
+  maximize: Maximize2, // "适应视图"
 };
 
 export function uiIcon(name: UiIconName): IconNode {

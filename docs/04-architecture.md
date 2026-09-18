@@ -126,6 +126,8 @@ toposmith/
     ├─ lib/number-input.ts   数字输入的提交语义：草稿 → 提交（纯函数，有单测）
     ├─ render/draw.ts        纯绘制函数（世界坐标 → 屏幕）+ 连线标签命中框 + 覆盖区域绘制
     ├─ render/signals.ts     无线信号波动画（独立覆盖层，低频按需，见 D-59）
+    ├─ components/ContextMenu.tsx     画布右键菜单（只放真能执行的命令，FR-80）
+    ├─ components/WirelessMeasure.tsx 无线测量面板（数据全部来自引擎，FR-80）
     ├─ render/Canvas.tsx     画布组件 + 指针交互 + 多选 + 吸附 + 动画循环 + 两层画布调度
     ├─ components/           Toolbar / LeftPanel / RightSidebar / SidebarTabs（左栏页签）/
     │                        SidebarStack（右栏堆叠面板）/ sidebar-drop（跨栏落点判定）/

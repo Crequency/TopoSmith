@@ -147,8 +147,11 @@ export function ShortcutDialog({ onClose }: { onClose: () => void }) {
           </Section>
 
           <Section title="画布导航">
-            <Row keys={<><MouseButton>中键</MouseButton><span className="text-[10px] text-slate-500">/</span><MouseButton>右键</MouseButton><span className="text-[10px] text-slate-500">/</span><Kbd>Space</Kbd></>}>
+            <Row keys={<><MouseButton>中键</MouseButton><span className="text-[10px] text-slate-500">/</span><Kbd>Space</Kbd><span className="text-[10px] text-slate-500">+左键</span></>}>
               平移画布（<Kbd>Space</Kbd> 需按住）
+            </Row>
+            <Row keys={<><MouseButton>右键</MouseButton><span className="text-[10px] text-slate-500">画布任意处</span></>}>
+              上下文菜单：测量此点的无线信号 / 适应视图
             </Row>
             <Row keys={<><span className="text-[10px] text-slate-500">滚轮</span></>}>以指针为锚点缩放（5%–400%）</Row>
             <Row keys={<><Kbd>Alt</Kbd></>}>按住时临时关闭网格吸附</Row>
@@ -156,6 +159,7 @@ export function ShortcutDialog({ onClose }: { onClose: () => void }) {
 
           <Section title="连线与端口">
             <Row keys={<><MouseButton>左键</MouseButton><span className="text-[10px] text-slate-500">点端口</span></>}>编辑端口详情（速率、介质、VLAN、正/背面）</Row>
+            <Row keys={<><span className="text-[10px] text-slate-500">拖端口 → 端口</span></>}>直接连线；松手落空＝取消</Row>
             <Row keys={<><span className="text-[10px] text-slate-500">连线模式</span></>}>依次点两个端口建立链路；点空白取消</Row>
             <Row keys={<><span className="text-[10px] text-slate-500">拖动标签</span></>}>沿连线移动速率标签；双击标签复位到中点</Row>
             <Row keys={<><span className="text-[10px] text-slate-500">悬浮卡片</span></>}>有背板端口的设备会半透明并露出背面端口（悬停机柜同理）</Row>
