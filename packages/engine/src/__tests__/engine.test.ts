@@ -587,6 +587,79 @@ describe('无线覆盖判定', () => {
     expect(link.issues.map((i) => i.code)).not.toContain('WIRELESS_OUT_OF_COVERAGE');
   });
 
+  it('一端没设制式 → 点名是哪台设备的哪个口（速率按 0）', () => {
+    const { scenario } = buildFixture();
+    const ap = instantiate('ap', 'dev-ap2', '客厅 AP', 0, 0);
+    const pc = instantiate('pc-desktop', 'dev-pc2', '书房台式机', 500, 0);
+    // 手动加出来的无线口：端口是无线，但设备没有无线配置（FR-78 的典型来源）
+    pc.ports.push({
+      id: 'port-wlan1',
+      name: 'WLAN1',
+      medium: 'wifi',
+      side: 'front',
+      speedMbps: 0,
+      duplex: 'full',
+      role: 'client',
+      vlan: 1,
+    });
+    scenario.devices.push(ap, pc);
+    scenario.cables.push(
+      cable('c9', 'wireless', 0, ['dev-ap2', 'port-wlan'], ['dev-pc2', 'port-wlan1']),
+    );
+
+    const link = buildWorld(scenario).links.find((l) => l.id === 'c9')!;
+    const issue = link.issues.find((i) => i.code === 'WIFI_SHARED_MEDIUM')!;
+    expect(link.up).toBe(true); // 只是速率未知，不是链路故障
+    expect(link.speedMbps).toBe(0);
+    // 报文必须点名设备与端口：否则用户要在两端各点一次才知道该改哪台
+    expect(issue.text).toContain('书房台式机');
+    expect(issue.text).toContain('WLAN1');
+    expect(issue.text).not.toContain('客厅 AP');
+    expect(issue.text).toContain('无线');
+  });
+
+  it('WiFi 客户端没填 SSID → 提醒它真机上不会关联（SSID_MISSING，warn）', () => {
+    const { scenario } = buildFixture();
+    const ap = instantiate('ap', 'dev-ap3', '客厅 AP', 0, 0);
+    const pc = instantiate('pc-laptop', 'dev-lap3', '新笔记本', 500, 0);
+    // 手动加出来的无线口：有制式、但没有 SSID（还没填完的状态）
+    pc.wireless = { mode: 'sta', standard: '802.11ax', band: '5G' };
+    scenario.devices.push(ap, pc);
+    scenario.cables.push(cable('c11', 'wireless', 0, ['dev-ap3', 'port-wlan'], ['dev-lap3', 'port-wlan']));
+
+    const link = buildWorld(scenario).links.find((l) => l.id === 'c11')!;
+    expect(link.up).toBe(true);
+    expect(link.speedMbps).toBe(1201); // 速率照给，但必须说明"真机上连不上"
+    const issue = link.issues.find((i) => i.code === 'SSID_MISSING')!;
+    expect(issue.level).toBe('warn');
+    expect(issue.text).toContain('新笔记本');
+    expect(issue.text).toContain('不会关联');
+  });
+
+  it('蜂窝终端没有 SSID 是正常的（PLMN 才是它的网络标识）', () => {
+    const { world } = buildCoverageFixture(
+      { shape: 'omni', radiusM: 150 },
+      { dx: 500, standard: 'nr', plmn: '46000' },
+      'nr',
+    );
+    const link = world.links.find((l) => l.id === 'c8')!;
+    expect(link.up).toBe(true);
+    expect(link.issues.map((i) => i.code)).not.toContain('SSID_MISSING');
+  });
+
+  it('两端都没设制式 → 报文说"两端都"', () => {
+    const { scenario } = buildFixture();
+    const a = instantiate('ap', 'dev-a', 'AP-A', 0, 0);
+    const b = instantiate('ap', 'dev-b', 'AP-B', 500, 0);
+    a.wireless = { mode: 'ap' };
+    b.wireless = { mode: 'sta' };
+    scenario.devices.push(a, b);
+    scenario.cables.push(cable('c10', 'wireless', 0, ['dev-a', 'port-wlan'], ['dev-b', 'port-wlan']));
+
+    const link = buildWorld(scenario).links.find((l) => l.id === 'c10')!;
+    expect(link.issues.find((i) => i.code === 'WIFI_SHARED_MEDIUM')!.text).toContain('两端都');
+  });
+
   it('WiFi 终端接不上蜂窝基站（RADIO_TECH_MISMATCH）', () => {
     const { world } = buildCoverageFixture({ shape: 'omni', radiusM: 150 }, { dx: 500 }, 'nr');
     const link = world.links.find((l) => l.id === 'c8')!;

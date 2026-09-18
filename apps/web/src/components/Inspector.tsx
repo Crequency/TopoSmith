@@ -1222,17 +1222,31 @@ function DeviceInspector({ device, world }: { device: Device; world: World }) {
               label="制式"
               hint="WiFi 与蜂窝是两套物理层：终端制式要能接上对方的网络"
             >
-              <Select<RadioStandard>
-                value={device.wireless?.standard ?? '802.11ax'}
-                options={RADIO_STANDARD_OPTIONS}
+              {/*
+                * 未设置时**必须显示"未设置"**，不能拿一个默认值顶上。
+                * 顶上的后果实测过：面板显示 802.11ax、引擎报文却说"缺少制式配置"，
+                * 用户只能看到一个自相矛盾的界面（FR-78）。
+                */}
+              <Select<RadioStandard | ''>
+                value={device.wireless?.standard ?? ''}
+                options={[
+                  { value: '', label: '未设置（无法协商速率）' },
+                  ...RADIO_STANDARD_OPTIONS,
+                ]}
                 onChange={(standard) =>
                   patchDevice(device.id, (d) => {
-                    const next: WirelessRadio = { ...(d.wireless ?? { mode: 'sta' }), standard };
-                    if (isCellularStandard(standard)) {
-                      // 蜂窝没有 SSID / 频段 / 信道，切过去时清掉，避免留下自相矛盾的字段
-                      delete next.ssid;
-                      delete next.band;
-                      delete next.channel;
+                    const next: WirelessRadio = { ...(d.wireless ?? { mode: 'sta' }) };
+                    if (standard === '') {
+                      // 清空制式 = 退回"未配置"状态，速率按 0 处理（链路仍算通）
+                      delete next.standard;
+                    } else {
+                      next.standard = standard;
+                      if (isCellularStandard(standard)) {
+                        // 蜂窝没有 SSID / 频段 / 信道，切过去时清掉，避免留下自相矛盾的字段
+                        delete next.ssid;
+                        delete next.band;
+                        delete next.channel;
+                      }
                     }
                     d.wireless = next;
                   })
