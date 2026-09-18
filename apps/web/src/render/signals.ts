@@ -5,22 +5,24 @@
  *   · **覆盖圈**说明"能服务到哪"（`draw.ts` 的 drawCoverages）；
  *   · **信号波**说明"这条关联此刻是通的"（本文件）。
  *
+ * 信号波的形态（用户给定）：以**无线设备卡片中心为原点**，沿**直线**射向接收设备，
+ * 表现为**若干条平行的弧线**依次推进 —— 像水波一样一道道刷过去，到达接收端后淡出。
+ * 之所以用弧线而不是圆点：弧线有"波前"的指向性，一眼能看出"从谁发向谁"；
+ * 平行（同一曲率半径）则让"这是一串波"而不是"一堆散乱的弧"。
+ *
  * 为什么单独一层画布：信号波是**常驻动画**。若把它画进主场景，每一帧都要重画
- * 800 条连线与 700 多张卡片（实测主场景一帧十几毫秒），为了几个跳动的点而让
- * 常驻 rAF 烧掉半个核，与"静止时不烧 CPU"的既有约定（FR-50）直接冲突。
- * 覆盖层只有几个圆点和圆弧，一帧不到 0.1 ms，且清空它不需要碰主场景。
+ * 800 条连线与 700 多张卡片（实测主场景一帧十几毫秒），为了几条弧线而让常驻 rAF
+ * 烧掉半个核，与"静止时不烧 CPU"的既有约定（FR-50）直接冲突。
+ * 覆盖层只有几条弧线，一帧不到 0.1 ms，且清空它不需要碰主场景。
  *
  * 这一层是**纯绘制**：相位由调用方推进（`SignalParams.phase`），
  * 因此"降低动效"只要不推进相位即可得到一张静态图 —— 不需要在这里分支。
  */
 
-import { KIND_COLOR } from './draw';
-import { linkPath } from '../lib/link-path';
+import { KIND_COLOR, worldToScreen } from './draw';
 import { coverageView } from '../lib/coverage';
-import { pointAtRatio } from '../lib/polyline';
-import { worldToScreen } from './draw';
+import { deviceCenter, type Point } from '@toposmith/schema';
 import type { DerivedLink, World } from '@toposmith/anvil';
-import type { Point } from '@toposmith/schema';
 import type { Viewport } from '../state/store';
 
 export interface SignalParams {
@@ -32,14 +34,74 @@ export interface SignalParams {
   phase: number;
 }
 
-/** 沿一条关联流动的信号点个数（3 个足以看出方向，又不会太吵） */
-const SIGNAL_DOTS = 3;
-/** 信号点半径（屏幕像素） */
-const DOT_RADIUS = 2.4;
-/** 端点处涟漪的圈数 */
-const RIPPLES = 3;
-const RIPPLE_BASE_PX = 6;
-const RIPPLE_STEP_PX = 7;
+/** 弧线的角张开的一半（弧度）：约 ±36°，看起来像一段"波前"而不是半圆 */
+const ARC_SPREAD = Math.PI / 5;
+/**
+ * 相邻波前的目标间距（屏幕像素）：密度不随链路长度变化。
+ * 取 70 是观感调出来的：90 时几百像素的链路上只有 4 道波，看着像"飘着的几根弧"，
+ * 而不是一串连续推进的波。
+ */
+const WAVE_SPACING_PX = 70;
+/** 一条关联上同时可见的波前数量上限（太密会糊成一片实线） */
+const MAX_WAVES = 8;
+const MIN_WAVES = 3;
+
+/** 波形弧线（屏幕坐标）：弧心 + 半径 + 起止角 */
+export interface WaveFront {
+  /** 弧心：在波前位置的后方一个半径处，于是弧线朝接收端鼓起 */
+  cx: number;
+  cy: number;
+  radius: number;
+  startAngle: number;
+  endAngle: number;
+}
+
+/**
+ * 弧线半径（屏幕像素）。
+ *
+ * 缩放越小卡片越小，弧线也该跟着收 —— 但**不能线性跟着缩**：
+ * 缩到 13%（IDC 场景）时线性会让弧线细到看不见。取 √zoom 折中：
+ * 100% → 26 px，25% → 13 px，10% → 9 px（下限）。
+ */
+export function waveFrontRadius(zoom: number): number {
+  return Math.max(9, Math.min(26, 26 * Math.sqrt(Math.max(0, zoom))));
+}
+
+/**
+ * 一条关联上此刻的波前（纯函数，便于单测与端到端断言"真的是平行弧线"）。
+ *
+ * 波前位置 `t = (phase + i / count) mod 1`，沿 from→to 的**直线**均匀推进；
+ * 所有弧线共用同一个半径，因此彼此**平行**；弧心退回一个半径，
+ * 于是弧顶正好落在直线上、朝接收端鼓。
+ */
+export function waveFronts(from: Point, to: Point, phase: number, radius: number): WaveFront[] {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy);
+  if (length < 1) return [];
+  const count = Math.max(MIN_WAVES, Math.min(MAX_WAVES, Math.round(length / WAVE_SPACING_PX)));
+  const direction = Math.atan2(dy, dx);
+  const fronts: WaveFront[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const t = (((phase + i / count) % 1) + 1) % 1;
+    const px = from.x + dx * t;
+    const py = from.y + dy * t;
+    fronts.push({
+      cx: px - Math.cos(direction) * radius,
+      cy: py - Math.sin(direction) * radius,
+      radius,
+      startAngle: direction - ARC_SPREAD,
+      endAngle: direction + ARC_SPREAD,
+    });
+  }
+  return fronts;
+}
+
+/** 波前在整条直线上的归一化位置（0 = 发射端，1 = 接收端） */
+export function waveFrontRatios(length: number, phase: number): number[] {
+  const count = Math.max(MIN_WAVES, Math.min(MAX_WAVES, Math.round(length / WAVE_SPACING_PX)));
+  return Array.from({ length: count }, (_, i) => (((phase + i / count) % 1) + 1) % 1);
+}
 
 /** 需要画信号波的无线关联：覆盖场景下、且当下是通的 */
 export function signalLinks(world: World): DerivedLink[] {
@@ -53,7 +115,7 @@ export function signalLinks(world: World): DerivedLink[] {
   return out;
 }
 
-/** 提供覆盖的那一端（决定信号从哪边发出）；两端都提供时取 a 端 */
+/** 提供覆盖的那一端（信号从它发出）；两端都提供时取 a 端 */
 function providerEnd(world: World, link: DerivedLink): 'a' | 'b' {
   const a = world.devices.get(link.a.deviceId);
   const b = world.devices.get(link.b.deviceId);
@@ -68,8 +130,52 @@ function tintOf(world: World, link: DerivedLink): string {
   return device ? (KIND_COLOR[device.kind] ?? '#38bdf8') : '#38bdf8';
 }
 
+/** 一条关联的几何：发射端 = 提供方的卡片中心，接收端 = 对端卡片中心（屏幕坐标） */
+export interface SignalGeometry {
+  linkId: string;
+  providerDeviceId: string;
+  peerDeviceId: string;
+  from: Point;
+  to: Point;
+  radius: number;
+  fronts: WaveFront[];
+}
+
+/** 算出某条关联此刻的信号波几何（端到端脚本按它断言，绘制也用它） */
+export function signalGeometry(
+  world: World,
+  camera: Viewport,
+  link: DerivedLink,
+  phase: number,
+): SignalGeometry | null {
+  const provider = providerEnd(world, link) === 'a' ? link.a : link.b;
+  const peer = provider === link.a ? link.b : link.a;
+  const fromDevice = world.devices.get(provider.deviceId);
+  const toDevice = world.devices.get(peer.deviceId);
+  if (!fromDevice || !toDevice) return null;
+
+  // 以**卡片中心**为原点（不是端口位置）：用户要的是"设备之间在传波"
+  const fromWorld = deviceCenter(fromDevice);
+  const toWorld = deviceCenter(toDevice);
+  const from = worldToScreen(camera, fromWorld.x, fromWorld.y);
+  const to = worldToScreen(camera, toWorld.x, toWorld.y);
+  const length = Math.hypot(to.x - from.x, to.y - from.y);
+  if (length < 24) return null; // 两张卡片几乎重叠：没有"传递"可言，画了只是一团糊
+
+  const radius = waveFrontRadius(camera.k);
+  return {
+    linkId: link.id,
+    providerDeviceId: provider.deviceId,
+    peerDeviceId: peer.deviceId,
+    from,
+    to,
+    radius,
+    fronts: waveFronts(from, to, phase, radius),
+  };
+}
+
 /**
- * 画一帧信号波。
+ * 画一帧信号波。返回屏幕上真正画出来的关联条数。
  *
  * 调用方负责先 `clearRect`：这一层是完全透明的覆盖层，只画信号本身。
  */
@@ -77,99 +183,57 @@ export function drawSignals(ctx: CanvasRenderingContext2D, params: SignalParams)
   const { world, camera, phase } = params;
   const links = signalLinks(world);
   if (links.length === 0) return 0;
+
+  const margin = 120;
   let drawn = 0;
 
-  // 视口包围盒（多给一圈余量）：整条关联都在屏幕外的直接跳过
-  const margin = 80;
-  const left = (0 - camera.x) / camera.k - margin;
-  const top = (0 - camera.y) / camera.k - margin;
-  const right = (params.width - camera.x) / camera.k + margin;
-  const bottom = (params.height - camera.y) / camera.k + margin;
-
   for (const link of links) {
-    const path = linkPath(world, link);
-    if (!path) continue;
-    const bounds = boundsOf(path.points);
-    if (bounds.right < left || bounds.left > right || bounds.bottom < top || bounds.top > bottom) {
-      continue;
-    }
+    const geometry = signalGeometry(world, camera, link, phase);
+    if (!geometry) continue;
 
-    // 屏幕坐标的折线：弧长在屏幕上均匀，视觉速度才不受缩放影响
-    const screen: Point[] = path.points.map((point) => worldToScreen(camera, point.x, point.y));
-    const from = providerEnd(world, link) === 'a' ? screen[0] : screen[screen.length - 1];
-    const to = providerEnd(world, link) === 'a' ? screen[screen.length - 1] : screen[0];
-    if (!from || !to) continue;
+    // 整条连线（含弧线半径）都在视口外就跳过 —— 覆盖层也要省着画
+    const minX = Math.min(geometry.from.x, geometry.to.x) - geometry.radius - margin;
+    const maxX = Math.max(geometry.from.x, geometry.to.x) + geometry.radius + margin;
+    const minY = Math.min(geometry.from.y, geometry.to.y) - geometry.radius - margin;
+    const maxY = Math.max(geometry.from.y, geometry.to.y) + geometry.radius + margin;
+    if (maxX < 0 || minX > params.width || maxY < 0 || minY > params.height) continue;
 
-    const color = tintOf(world, link);
-    drawSignalDots(ctx, screen, color, phase);
-    drawRipples(ctx, from, to, color, phase);
-    drawRipples(ctx, to, from, color, phase + 0.5);
+    drawWaveFrontStack(ctx, geometry, tintOf(world, link), phase);
     drawn += 1;
   }
   return drawn;
 }
 
-/** 沿关联流动的信号点：两端淡入淡出，看起来是"在传"而不是"在闪" */
-function drawSignalDots(
-  ctx: CanvasRenderingContext2D,
-  screen: Point[],
-  color: string,
-  phase: number,
-): void {
-  ctx.save();
-  ctx.shadowColor = color;
-  ctx.shadowBlur = 6;
-  for (let i = 0; i < SIGNAL_DOTS; i += 1) {
-    const t = (phase + i / SIGNAL_DOTS) % 1;
-    const at = pointAtRatio(screen, t);
-    ctx.globalAlpha = Math.sin(Math.PI * t) * 0.95;
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(at.x, at.y, DOT_RADIUS, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.restore();
-}
-
 /**
- * 端点处的信号涟漪：几圈朝对端张开的圆弧，向外扩散并淡出。
+ * 画一串平行弧线。
  *
- * 两端都画是刻意的：信号点可能因为缩放在屏幕外（用户在卡片附近放大时），
- * 只要端点的涟漪在视野里，就仍然能读出"这台设备有无线连接、朝哪边"。
+ * 透明度按波前在直线上的位置做正弦包络：发射端与接收端都淡（像是"发出"与"收到"），
+ * 中段最实。相位回绕时整串波无缝衔接，不会出现"跳一下"。
  */
-function drawRipples(
+function drawWaveFrontStack(
   ctx: CanvasRenderingContext2D,
-  at: Point,
-  toward: Point,
+  geometry: SignalGeometry,
   color: string,
   phase: number,
 ): void {
-  const direction = Math.atan2(toward.y - at.y, toward.x - at.x);
-  const spread = 0.55; // 约 63°，像一圈朝外的波前
+  const length = Math.hypot(geometry.to.x - geometry.from.x, geometry.to.y - geometry.from.y);
+  const ratios = waveFrontRatios(length, phase);
+
   ctx.save();
   ctx.strokeStyle = color;
-  ctx.lineWidth = 1.6;
+  ctx.lineWidth = Math.max(1.4, geometry.radius / 12);
   ctx.lineCap = 'round';
-  for (let i = 0; i < RIPPLES; i += 1) {
-    const t = (phase + i / RIPPLES) % 1;
-    ctx.globalAlpha = (1 - t) * 0.7;
-    ctx.beginPath();
-    ctx.arc(at.x, at.y, RIPPLE_BASE_PX + t * RIPPLE_STEP_PX, direction - spread, direction + spread);
-    ctx.stroke();
-  }
-  ctx.restore();
-}
 
-function boundsOf(points: Point[]): { left: number; top: number; right: number; bottom: number } {
-  let left = Number.POSITIVE_INFINITY;
-  let top = Number.POSITIVE_INFINITY;
-  let right = Number.NEGATIVE_INFINITY;
-  let bottom = Number.NEGATIVE_INFINITY;
-  for (const point of points) {
-    left = Math.min(left, point.x);
-    top = Math.min(top, point.y);
-    right = Math.max(right, point.x);
-    bottom = Math.max(bottom, point.y);
-  }
-  return { left, top, right, bottom };
+  geometry.fronts.forEach((front, index) => {
+    const t = ratios[index] ?? 0;
+    // sin 包络：0 与 1 处透明，中段最亮
+    const alpha = Math.sin(Math.PI * t) * 0.85;
+    if (alpha <= 0.02) return;
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.arc(front.cx, front.cy, front.radius, front.startAngle, front.endAngle);
+    ctx.stroke();
+  });
+
+  ctx.restore();
 }
