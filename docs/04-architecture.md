@@ -48,7 +48,8 @@ catalog 是纯数据（可被文档生成、采购清单等复用），schema �
 | WebGL（PixiJS / 自研） | 10⁵ 顶点级 | M2 达标后再切 |
 
 **为什么先不上 WebGL**：M0 的目标是"把推演链路打通"，而不是"渲染压测"。
-渲染器已经抽象为 `render/draw.ts` + `render/Canvas.tsx` 两层，
+渲染器已经抽象为 `render/draw.ts` + `render/Canvas.tsx` 两层（另有一块独立的透明
+**信号波覆盖层**，见 D-59），
 绘制原语（节点、端口、线缆、文本）与视口变换（`world ↔ screen`）是纯函数，
 换成 PixiJS 只需重写 `draw.ts`，交互与状态层不动。
 
@@ -110,7 +111,9 @@ toposmith/
 │      └─ diag/index.ts      统一诊断入口
 └─ apps/web/src/
     ├─ lib/icons.ts          Lucide 图标注册表：Path2D（画布）+ Icon 组件（DOM）同源
-    ├─ lib/geometry.ts       对齐 / 分布 / 吸附 / 框选判定（纯函数，有单测）
+    ├─ lib/geometry.ts       对齐 / 分布 / 吸附 / 框选判定 + 机柜容器几何（纯函数，有单测）
+    │                        （卡片足迹——尺寸 / 矩形 / 中心——在 @toposmith/schema，见 D-56）
+    ├─ lib/coverage.ts       无线覆盖的交互几何：手柄位置 / 边缘命中 / 拖动换算（纯函数，有单测）
     ├─ lib/polyline.ts       折线弧长参数化：按比例取点 / 光标投影回比例（纯函数，有单测）
     ├─ lib/ports.ts          端口图元布局：尺寸分档 + 自动换行 + 命中测试（纯函数，有单测）
     ├─ lib/flow.ts           流向动画模型：路径构建、速率映射、推进与阻断（纯函数，有单测）
@@ -121,8 +124,9 @@ toposmith/
     ├─ lib/command-menu.ts   命令菜单数据与过滤：分组、顺序、子串匹配（纯函数，有单测）
     ├─ lib/cable-physics.ts  连线摆动物理（纯函数，有单测）
     ├─ lib/number-input.ts   数字输入的提交语义：草稿 → 提交（纯函数，有单测）
-    ├─ render/draw.ts        纯绘制函数（世界坐标 → 屏幕）+ 连线标签命中框
-    ├─ render/Canvas.tsx     画布组件 + 指针交互 + 多选 + 吸附 + 动画循环
+    ├─ render/draw.ts        纯绘制函数（世界坐标 → 屏幕）+ 连线标签命中框 + 覆盖区域绘制
+    ├─ render/signals.ts     无线信号波动画（独立覆盖层，低频按需，见 D-59）
+    ├─ render/Canvas.tsx     画布组件 + 指针交互 + 多选 + 吸附 + 动画循环 + 两层画布调度
     ├─ components/           Toolbar / LeftPanel / RightSidebar / SidebarTabs（左栏页签）/
     │                        SidebarStack（右栏堆叠面板）/ sidebar-drop（跨栏落点判定）/
     │                        cards.tsx（页面 id → 内容的唯一登记表）/ Inspector / Diagnostics /
