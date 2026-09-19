@@ -10,17 +10,38 @@ import { describe, expect, it } from 'vitest';
 import { instantiate } from '@toposmith/catalog';
 import { SCHEMA_VERSION, deviceCenter, type Cable, type Device, type Scenario } from '@toposmith/schema';
 import { buildWorld } from '@toposmith/anvil';
-import { waveFrontRadius, waveFrontRatios, waveFronts } from '../signals';
+import { ARCS_PER_GROUP, waveFrontRadius, waveFrontRatios, waveFronts } from '../signals';
 
 const from = { x: 0, y: 0 };
 const to = { x: 400, y: 0 };
 
 describe('波前位置', () => {
-  it('数量随距离变化，且限制在 3–8 条之间', () => {
-    // 密集度口径：每 70 px 一道波，最后夹到 3–8 条
-    expect(waveFrontRatios(70 * 1, 0)).toHaveLength(3); // round(1) → 下限 3
-    expect(waveFrontRatios(70 * 5, 0)).toHaveLength(5);
-    expect(waveFrontRatios(70 * 20, 0)).toHaveLength(8); // 上限 8
+  it('组数随距离变化，且限制在 2–5 组之间', () => {
+    // 密集度口径：每 150 px 一组，最后夹到 2–5 组
+    expect(waveFrontRatios(150 * 1, 0)).toHaveLength(2); // round(1) → 下限 2
+    expect(waveFrontRatios(150 * 3, 0)).toHaveLength(3);
+    expect(waveFrontRatios(150 * 20, 0)).toHaveLength(5); // 上限 5
+  });
+
+  it('每组固定三条弧（像 WiFi 图标）', () => {
+    const fronts = waveFronts(from, to, 0.25, 26);
+    expect(fronts).toHaveLength(waveFrontRatios(400, 0.25).length * ARCS_PER_GROUP);
+    const byGroup = new Map<number, typeof fronts>();
+    for (const front of fronts) {
+      const list = byGroup.get(front.group) ?? [];
+      list.push(front);
+      byGroup.set(front.group, list);
+    }
+    for (const arcs of byGroup.values()) {
+      expect(arcs).toHaveLength(ARCS_PER_GROUP);
+      // 组内半径等间隔（前导弧最大），层号 0/1/2 依次向后
+      const radii = arcs.map((arc) => arc.radius).sort((a, b) => b - a);
+      const gaps = radii.slice(1).map((radius, index) => (radii[index] as number) - radius);
+      expect(new Set(gaps.map((gap) => Math.round(gap * 1000))).size).toBe(1);
+      expect(arcs.map((arc) => arc.layer).sort()).toEqual([0, 1, 2]);
+      // 同组共用一个弧心（同心弧）→ 与 WiFi 图标一致
+      expect(new Set(arcs.map((arc) => `${arc.cx.toFixed(3)}:${arc.cy.toFixed(3)}`)).size).toBe(1);
+    }
   });
 
   it('相位推进时每条波前都向前走，且回绕后位置仍在 [0,1)', () => {
@@ -33,11 +54,19 @@ describe('波前位置', () => {
 });
 
 describe('弧线形态', () => {
-  it('所有弧线**半径相同**（平行），且弧顶落在 from→to 的直线上', () => {
+  it('每组三条弧的弧顶都落在 from→to 的直线上，组与组之间形态一致', () => {
     const radius = waveFrontRadius(1);
     const fronts = waveFronts(from, to, 0.25, radius);
-    expect(fronts.length).toBeGreaterThanOrEqual(3);
-    expect(new Set(fronts.map((front) => front.radius)).size).toBe(1);
+    expect(fronts.length).toBeGreaterThanOrEqual(2 * ARCS_PER_GROUP);
+    // 组与组之间是"同一套形状平移"：所有弧的半径集合完全相同
+    const perGroup = new Map<number, number[]>();
+    for (const front of fronts) {
+      perGroup.set(front.group, [...(perGroup.get(front.group) ?? []), Math.round(front.radius * 1000)]);
+    }
+    const signatures = new Set([...perGroup.values()].map((radii) => radii.sort().join(',')));
+    expect(signatures.size).toBe(1);
+    // 所有弧的角张开也一样（平行/同心）
+    expect(new Set(fronts.map((front) => `${front.startAngle.toFixed(3)}:${front.endAngle.toFixed(3)}`)).size).toBe(1);
 
     // 弧顶 = 弧心 + 半径 × 指向接收端的方向；它必须落在直线上
     for (const front of fronts) {
@@ -53,9 +82,12 @@ describe('弧线形态', () => {
     const radius = 20;
     const fronts = waveFronts(from, to, 0.5, radius);
     for (const front of fronts) {
-      // 方向是 +X → 弧心必须在弧顶左边一个半径处
-      const apexX = front.cx + radius;
-      expect(apexX - front.cx).toBeCloseTo(radius, 6);
+      // 方向是 +X → 每条弧的弧心都在它自己弧顶左边整整一个半径处
+      const apexX = front.cx + front.radius;
+      expect(apexX - front.cx).toBeCloseTo(front.radius, 6);
+      // 而且弧顶必须落在 from→to 之间
+      expect(apexX).toBeGreaterThanOrEqual(-0.001);
+      expect(apexX).toBeLessThanOrEqual(to.x + 0.001);
     }
   });
 
@@ -67,6 +99,15 @@ describe('弧线形态', () => {
       expect(apexY).toBeGreaterThanOrEqual(-0.001);
       expect(apexY).toBeLessThanOrEqual(down.y + 0.001);
       expect(front.cx).toBeCloseTo(0, 6);
+    }
+  });
+
+  it('所有弧线半径都为正（负半径会让 ctx.arc 抛错、把整棵组件树带崩）', () => {
+    for (const zoom of [0.05, 0.13, 0.25, 0.5, 1, 2, 4]) {
+      const radius = waveFrontRadius(zoom);
+      const fronts = waveFronts(from, to, 0.3, radius);
+      expect(fronts.length).toBeGreaterThan(0);
+      for (const front of fronts) expect(front.radius).toBeGreaterThan(0);
     }
   });
 

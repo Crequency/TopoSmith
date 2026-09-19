@@ -37,14 +37,28 @@ export interface SignalParams {
 /** 弧线的角张开的一半（弧度）：约 ±36°，看起来像一段"波前"而不是半圆 */
 const ARC_SPREAD = Math.PI / 5;
 /**
- * 相邻波前的目标间距（屏幕像素）：密度不随链路长度变化。
- * 取 70 是观感调出来的：90 时几百像素的链路上只有 4 道波，看着像"飘着的几根弧"，
- * 而不是一串连续推进的波。
+ * 每组弧线的条数：**3 条**，像 WiFi 图标那样由内向外排开（用户给定的形态）。
+ * 一条弧看不出"这是一组波"，三条才有图标一样的辨识度。
  */
-const WAVE_SPACING_PX = 70;
-/** 一条关联上同时可见的波前数量上限（太密会糊成一片实线） */
-const MAX_WAVES = 8;
-const MIN_WAVES = 3;
+export const ARCS_PER_GROUP = 3;
+/**
+ * 每组之间的目标间距（屏幕像素）：密度不随链路长度变化。
+ * 3 条弧一组比单条弧"占地方"，因此间距比单弧方案（70 px）大一倍多，
+ * 否则相邻两组会互相插进去、糊成一团。
+ */
+const GROUP_SPACING_PX = 150;
+/** 一条关联上同时可见的**组**数上限（太密会糊成一片） */
+const MAX_GROUPS = 5;
+const MIN_GROUPS = 2;
+/**
+ * 组内相邻弧线的间距 = 基准半径 × 这个系数。
+ *
+ * 上限是 1/2：三条弧的半径分别 R、R−gap、R−2gap，取 0.52 时最内那条会变成**负数** ——
+ * `ctx.arc` 遇到负半径直接抛 IndexSizeError，而动效是在渲染 effect 里跑的，
+ * 一抛就把整棵组件树卸掉（现象是"画布整个消失"）。0.3 既保证最内弧仍有 0.4R，
+ * 三条弧的层次也够清楚。
+ */
+const ARC_GAP_RATIO = 0.3;
 
 /** 波形弧线（屏幕坐标）：弧心 + 半径 + 起止角 */
 export interface WaveFront {
@@ -54,6 +68,10 @@ export interface WaveFront {
   radius: number;
   startAngle: number;
   endAngle: number;
+  /** 属于第几组（同组的三条弧共用一个弧心，像 WiFi 图标那样由内向外排开） */
+  group: number;
+  /** 组内第几条：0 = 前导弧（最靠近接收端、最实），1/2 依次后退、渐淡 */
+  layer: number;
 }
 
 /**
@@ -79,27 +97,37 @@ export function waveFronts(from: Point, to: Point, phase: number, radius: number
   const dy = to.y - from.y;
   const length = Math.hypot(dx, dy);
   if (length < 1) return [];
-  const count = Math.max(MIN_WAVES, Math.min(MAX_WAVES, Math.round(length / WAVE_SPACING_PX)));
   const direction = Math.atan2(dy, dx);
+  const gap = Math.max(3, radius * ARC_GAP_RATIO);
   const fronts: WaveFront[] = [];
-  for (let i = 0; i < count; i += 1) {
-    const t = (((phase + i / count) % 1) + 1) % 1;
+  const ratios = waveFrontRatios(length, phase);
+
+  ratios.forEach((t, group) => {
+    // 该组的**前导弧**顶点正好落在 t 处，整组共用一个弧心 → 与前导弧同心、半径递减
     const px = from.x + dx * t;
     const py = from.y + dy * t;
-    fronts.push({
-      cx: px - Math.cos(direction) * radius,
-      cy: py - Math.sin(direction) * radius,
-      radius,
-      startAngle: direction - ARC_SPREAD,
-      endAngle: direction + ARC_SPREAD,
-    });
-  }
+    const cx = px - Math.cos(direction) * radius;
+    const cy = py - Math.sin(direction) * radius;
+    for (let k = 0; k < ARCS_PER_GROUP; k += 1) {
+      fronts.push({
+        cx,
+        cy,
+        // 从外到内：前导弧最大（顶点在 t 处），后面的逐条后退一个间距
+        // （下限 1 px：半径必须为正，否则 ctx.arc 会抛错把组件树带崩）
+        radius: Math.max(1, radius - k * gap),
+        startAngle: direction - ARC_SPREAD,
+        endAngle: direction + ARC_SPREAD,
+        group,
+        layer: k,
+      });
+    }
+  });
   return fronts;
 }
 
-/** 波前在整条直线上的归一化位置（0 = 发射端，1 = 接收端） */
+/** 每一**组**波前在直线上的归一化位置（0 = 发射端，1 = 接收端） */
 export function waveFrontRatios(length: number, phase: number): number[] {
-  const count = Math.max(MIN_WAVES, Math.min(MAX_WAVES, Math.round(length / WAVE_SPACING_PX)));
+  const count = Math.max(MIN_GROUPS, Math.min(MAX_GROUPS, Math.round(length / GROUP_SPACING_PX)));
   return Array.from({ length: count }, (_, i) => (((phase + i / count) % 1) + 1) % 1);
 }
 
@@ -221,15 +249,20 @@ function drawWaveFrontStack(
 
   ctx.save();
   ctx.strokeStyle = color;
-  ctx.lineWidth = Math.max(1.4, geometry.radius / 12);
   ctx.lineCap = 'round';
 
-  geometry.fronts.forEach((front, index) => {
-    const t = ratios[index] ?? 0;
-    // sin 包络：0 与 1 处透明，中段最亮
-    const alpha = Math.sin(Math.PI * t) * 0.85;
-    if (alpha <= 0.02) return;
+  // 组内三条弧的透明度：前导弧最实、越往后越淡（WiFi 图标的层次感）
+  const LAYER_ALPHA = [1, 0.72, 0.46];
+
+  geometry.fronts.forEach((front) => {
+    const t = ratios[front.group] ?? 0;
+    // sin 包络：发射端与接收端透明，中段最亮
+    const layer = LAYER_ALPHA[front.layer] ?? 1;
+    const alpha = Math.sin(Math.PI * t) * 0.9 * layer;
+    if (alpha <= 0.02 || front.radius <= 1) return;
     ctx.globalAlpha = alpha;
+    // 后面的弧线略细一点，层次更清楚
+    ctx.lineWidth = Math.max(1.2, (geometry.radius / 12) * (0.7 + 0.3 * layer));
     ctx.beginPath();
     ctx.arc(front.cx, front.cy, front.radius, front.startAngle, front.endAngle);
     ctx.stroke();

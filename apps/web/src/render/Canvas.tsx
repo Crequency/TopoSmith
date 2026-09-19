@@ -89,7 +89,11 @@ import {
 } from './draw';
 import { nearestRatio } from '../lib/polyline';
 import { createSway, isSwaySettled, stepSway, swayScaleForSpan } from '../lib/cable-physics';
-import { linkAnchorMidpoint, linkSpan } from '../lib/link-path';
+import {
+  clampWirelessLabelRatio,
+  linkAnchorMidpoint,
+  linkSpan,
+} from '../lib/link-path';
 import type { CableSway } from '../lib/cable-physics';
 
 const NO_GUIDES: SnapGuides = { vertical: [], horizontal: [] };
@@ -581,6 +585,8 @@ export function TopologyCanvas() {
       const fresh = now - swayPrevTime.current <= SWAY_SAMPLE_STALE_MS;
 
       for (const link of current.links) {
+        // 无线不是电缆：没有下垂与惯性，标签也不该跟着抖（FR-85）
+        if (link.family === 'wireless') continue;
         const mid = linkAnchorMidpoint(current, link);
         if (!mid) continue;
         mids.set(link.id, mid);
@@ -1186,8 +1192,13 @@ export function TopologyCanvas() {
       const projection = nearestRatio(path.points, point);
       // 靠近中点就吸附回中线：让"拖回默认位置"是可复现的，而不是靠手感
       const distanceToMid = Math.hypot(point.x - path.mid.x, point.y - path.mid.y) * viewport.k;
+      // 无线标签沿**直线**滑动（path.points 就是那条直线），且范围收窄到两张卡片之间
       const ratio =
-        distanceToMid <= LABEL_SNAP_PX ? DEFAULT_LABEL_RATIO : clampLabelRatio(projection.ratio);
+        distanceToMid <= LABEL_SNAP_PX
+          ? DEFAULT_LABEL_RATIO
+          : link.family === 'wireless'
+            ? clampWirelessLabelRatio(world, link, projection.ratio)
+            : clampLabelRatio(projection.ratio);
       useApp.getState().patchCable(link.id, { labelRatio: ratio });
     }
   };
