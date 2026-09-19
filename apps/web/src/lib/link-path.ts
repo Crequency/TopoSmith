@@ -7,7 +7,7 @@
  */
 
 import type { DerivedLink, World } from '@toposmith/anvil';
-import { clampLabelRatio, DEFAULT_LABEL_RATIO } from '@toposmith/schema';
+import { clampLabelRatio, deviceCenter, DEFAULT_LABEL_RATIO } from '@toposmith/schema';
 import { NODE_H, NODE_W, cardHeightOf, cardWidthOf, type CardSized, type Point } from './geometry';
 import { portGlyphOf } from './ports';
 import { pointAtRatio } from './polyline';
@@ -56,6 +56,42 @@ function sampleCubic(p0: Point, p1: Point, p2: Point, p3: Point, steps: number):
   return points;
 }
 
+/**
+ * 无线标签可落在直线上的哪一段（FR-85）。
+ *
+ * 无线标签的直线两端是**卡片中心**，所以 0 与 1 都埋在卡片里、根本点不到。
+ * 范围按**两张卡片各自的半宽**算出来，再加一点余量给标签自己：
+ *   min = (A 卡片半宽 + 余量) / 直线长度
+ *   max = 1 − (B 卡片半宽 + 余量) / 直线长度
+ * 于是标签中心始终落在两张卡片之外；卡片离得极近（范围被挤空）时退回中点附近，
+ * 免得算出 min > max 这种自相矛盾的结果。
+ */
+export const WIRELESS_LABEL_MARGIN = 24;
+
+export function wirelessLabelRange(
+  world: World,
+  link: DerivedLink,
+): { min: number; max: number } {
+  const fallback = { min: 0.4, max: 0.6 };
+  const deviceA = world.devices.get(link.a.deviceId);
+  const deviceB = world.devices.get(link.b.deviceId);
+  if (!deviceA || !deviceB) return fallback;
+  const from = deviceCenter(deviceA);
+  const to = deviceCenter(deviceB);
+  const length = Math.hypot(to.x - from.x, to.y - from.y);
+  if (length < 40) return fallback;
+  const min = (cardWidthOf(deviceA) / 2 + WIRELESS_LABEL_MARGIN) / length;
+  const max = 1 - (cardWidthOf(deviceB) / 2 + WIRELESS_LABEL_MARGIN) / length;
+  if (!(min < max)) return fallback;
+  return { min, max };
+}
+
+/** 把无线标签的位置夹到上面那段范围里 */
+export function clampWirelessLabelRatio(world: World, link: DerivedLink, value: number | undefined): number {
+  const { min, max } = wirelessLabelRange(world, link);
+  return Math.min(max, Math.max(min, clampLabelRatio(value)));
+}
+
 /** 电缆的下垂幅度：跨度越大垂得越多，但有上下限（太短的线不该垂成一个环） */
 export function cableDropFor(span: number): number {
   return Math.min(140, Math.max(26, span * 0.34));
@@ -76,6 +112,29 @@ export function linkPath(world: World, link: DerivedLink, sway?: CableSwayOffset
   const deviceA = world.devices.get(link.a.deviceId);
   const deviceB = world.devices.get(link.b.deviceId);
   if (!deviceA || !deviceB) return null;
+
+  /*
+   * 无线关联走**直线**（FR-85）。
+   *
+   * 无线不是电缆：它没有下垂、没有铜线的惯性，也不需要"从端口出发"那个隐喻 ——
+   * 无线电波是从设备射向设备的。所以这里对无线关联：
+   *   · 端点取两张**卡片中心**（与信号波的发射端/接收端一致，标签因此落在波的直线上）；
+   *   · 路径就是一条两点直线（不采样贝塞尔）；
+   *   · **忽略摆动偏移** —— 没有电缆可甩，标签不该跟着抖。
+   * 带宽标签同样沿这条直线定位，于是"拖标签"就是在直线上滑动（FR-85）。
+   */
+  if (link.family === 'wireless') {
+    const from = deviceCenter(deviceA);
+    const to = deviceCenter(deviceB);
+    const points = [from, to];
+    return {
+      points,
+      from,
+      to,
+      mid: { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 },
+      labelPoint: pointAtRatio(points, clampWirelessLabelRatio(world, link, link.cable.labelRatio)),
+    };
+  }
 
   const glyphA = portGlyphOf(deviceA, link.a.portId);
   const glyphB = portGlyphOf(deviceB, link.b.portId);

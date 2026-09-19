@@ -2,12 +2,13 @@
 
 import { describe, expect, it } from 'vitest';
 import { instantiate } from '@toposmith/catalog';
-import { MAX_LABEL_RATIO, SCHEMA_VERSION, type Scenario } from '@toposmith/schema';
+import { MAX_LABEL_RATIO, SCHEMA_VERSION, deviceCenter, type Scenario } from '@toposmith/schema';
 import { buildWorld } from '@toposmith/anvil';
 import { NODE_H, NODE_W } from '../../lib/geometry';
 import { portGlyphOf } from '../../lib/ports';
 import { nearestRatio } from '../../lib/polyline';
 import { cableLabelRect, cableLabelVisible, hitCableLabel, linkPath } from '../draw';
+import { wirelessLabelRange } from '../../lib/link-path';
 
 function fixture() {
   const sw = instantiate('switch-8-1g', 'dev-sw', '交换机', 100, 100);
@@ -174,5 +175,113 @@ describe('速率标签的可见性与命中一致（FR-56）', () => {
     expect(
       hitCableLabel(world, far, rect.x + rect.w / 2, rect.y + rect.h / 2, undefined, [link.id])?.id,
     ).toBe(link.id);
+  });
+});
+
+/* ─────────────────── 无线关联走直线（FR-85） ─────────────────── */
+
+describe('无线关联的标签几何', () => {
+  function wirelessFixture(labelRatio?: number) {
+    const ap = instantiate('ap', 'dev-ap', 'AP', 0, 0);
+    const laptop = instantiate('pc-laptop', 'dev-lap', '笔记本', 600, 200);
+    const scenario: Scenario = {
+      schemaVersion: SCHEMA_VERSION,
+      id: 'wireless-path',
+      name: 'wireless path',
+      devices: [ap, laptop],
+      cables: [
+        {
+          id: 'cbl-1',
+          type: 'wireless',
+          lengthM: 0,
+          labelRatio,
+          a: { deviceId: 'dev-ap', portId: 'port-wlan' },
+          b: { deviceId: 'dev-lap', portId: 'port-wlan' },
+        },
+      ],
+      updatedAt: '2026-09-18T00:00:00.000Z',
+    };
+    const world = buildWorld(scenario);
+    return { world, link: world.links[0]!, ap, laptop };
+  }
+
+  it('路径是两点直线，端点取卡片中心（不是端口）', () => {
+    const { world, link, ap, laptop } = wirelessFixture();
+    const path = linkPath(world, link)!;
+    expect(path.points).toHaveLength(2);
+    expect(path.from).toEqual(deviceCenter(ap));
+    expect(path.to).toEqual(deviceCenter(laptop));
+    expect(path.mid.x).toBeCloseTo((path.from.x + path.to.x) / 2, 6);
+    expect(path.mid.y).toBeCloseTo((path.from.y + path.to.y) / 2, 6);
+  });
+
+  it('摆动偏移对无线无效：没有电缆可甩，标签不该跟着抖', () => {
+    const { world, link } = wirelessFixture();
+    const still = linkPath(world, link)!;
+    const shaken = linkPath(world, link, { x: 60, y: 90 })!;
+    expect(shaken.labelPoint).toEqual(still.labelPoint);
+    expect(shaken.mid).toEqual(still.mid);
+  });
+
+  it('标签沿直线按 labelRatio 定位；极端值会被夹到"两张卡片之外"', () => {
+    const { world, link } = wirelessFixture(0.25);
+    const path = linkPath(world, link)!;
+    expect(path.labelPoint.x).toBeCloseTo(path.from.x + (path.to.x - path.from.x) * 0.25, 6);
+
+    const range = wirelessLabelRange(world, link);
+    // 范围按卡片半宽 + 余量算：两端都留出空间，标签中心不会落在卡片里
+    expect(range.min).toBeGreaterThan(0.1);
+    expect(range.max).toBeLessThan(0.9);
+    expect(range.min).toBeLessThan(range.max);
+
+    const edge = wirelessFixture(0.04);
+    const edgePath = linkPath(edge.world, edge.link)!;
+    expect(edgePath.labelPoint.x).toBeCloseTo(
+      edgePath.from.x + (edgePath.to.x - edgePath.from.x) * range.min,
+      6,
+    );
+    // 夹取之后，标签中心与两张卡片中心的距离都大于卡片半宽（76）
+    const length = Math.hypot(edgePath.to.x - edgePath.from.x, edgePath.to.y - edgePath.from.y);
+    const toFromDistance = Math.hypot(
+      edgePath.labelPoint.x - edgePath.from.x,
+      edgePath.labelPoint.y - edgePath.from.y,
+    );
+    expect(toFromDistance).toBeGreaterThan(76);
+    expect(length - toFromDistance).toBeGreaterThan(76);
+
+    const other = wirelessFixture(0.99);
+    const otherPath = linkPath(other.world, other.link)!;
+    expect(otherPath.labelPoint.x).toBeCloseTo(
+      otherPath.from.x + (otherPath.to.x - otherPath.from.x) * range.max,
+      6,
+    );
+  });
+
+  it('有线仍然走电缆曲线（端点取端口、路径有采样点、中点明显下坠）', () => {
+    const { world } = fixture();
+    void world;
+    const sw = instantiate('switch-8-1g', 'dev-sw2', 'SW', 0, 0);
+    const pc = instantiate('pc-desktop', 'dev-pc2', 'PC', 600, 200);
+    const scenario: Scenario = {
+      schemaVersion: SCHEMA_VERSION,
+      id: 'wired-path',
+      name: 'wired path',
+      devices: [sw, pc],
+      cables: [
+        {
+          id: 'cbl-2',
+          type: 'cat6',
+          lengthM: 5,
+          a: { deviceId: 'dev-sw2', portId: 'port-ge1' },
+          b: { deviceId: 'dev-pc2', portId: 'port-ge1' },
+        },
+      ],
+      updatedAt: '2026-09-18T00:00:00.000Z',
+    };
+    const wiredWorld = buildWorld(scenario);
+    const path = linkPath(wiredWorld, wiredWorld.links[0]!)!;
+    expect(path.points.length).toBeGreaterThan(2);
+    const straightMidY = (path.from.y + path.to.y) / 2;
+    expect(path.mid.y).toBeGreaterThan(straightMidY + 10);
   });
 });
