@@ -16,6 +16,7 @@ import { buildCampusScenario } from './campus';
 import { buildIdcScenario } from './idc';
 import { buildLoopScenario } from './loop';
 import { buildCellularScenario } from './cellular';
+import { buildAnimationsScenario } from './animations';
 
 export { buildEmptyScenario, buildHomeScenario } from './home';
 
@@ -106,6 +107,18 @@ export const PRESETS: PresetMeta[] = [
       '三处刻意留下的问题：一台手机落在 5G 扇区的背面（距离够近但方向不对）、一台平板跑出了所有覆盖圈、' +
       '一台只有 WiFi 的笔记本接在 4G 基站上（制式不匹配）—— 把它们分别拖回扇区、拖回圈内、换成蜂窝终端即可恢复。',
     build: buildCellularScenario,
+  },
+  {
+    key: 'animations',
+    name: '无线动画总览',
+    summary:
+      '九个小区各一种动画形态：信号波、信号涟漪、波束扫描、数据流光点、连接线、蜂窝网格、电磁波、' +
+      'Massive MIMO 波束、脉冲闪烁 —— 设备名就是图例，打开即可看全九种。',
+    highlights: ['九种无线动画同屏', '逐台指定动画', '6 GHz 电磁波最密', 'MIMO 一个阵列射向三台'],
+    pitfall:
+      '这一屏也是「用户设置 → 无线连接动画」的演示台：默认「遵照每台设备」时九种同时在场；' +
+      '切成「统一动画」后九格会立刻变成同一种。',
+    build: buildAnimationsScenario,
   },
 ];
 

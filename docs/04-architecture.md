@@ -139,7 +139,8 @@ toposmith/
     │                        SidebarStack（右栏堆叠面板）/ sidebar-drop（跨栏落点判定）/
     │                        cards.tsx（页面 id → 内容的唯一登记表）/ Inspector / Diagnostics /
     │                        CommandPalette / Palette / NodeTree / 各弹窗
-    ├─ scenarios/home.ts     预置家庭场景
+    ├─ scenarios/           九套预置场景（home / campus / idc / access / cellular /
+    │                        loop / animations…）；index.ts 是唯一登记表（FR-54）
     └─ state/store.ts        zustand store
 ```
 
