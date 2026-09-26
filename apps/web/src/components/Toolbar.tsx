@@ -8,6 +8,7 @@ import { REPO_URL } from '../lib/project';
 import { selectionCount, useApp } from '../state/store';
 import { Button, NumberInput, Select } from './ui';
 import { AboutDialog } from './AboutDialog';
+import { SettingsDialog } from './SettingsDialog';
 import { PresetDialog } from './PresetDialog';
 
 export function Toolbar() {
@@ -30,6 +31,9 @@ export function Toolbar() {
   const zoomAt = useApp((s) => s.zoomAt);
   const [presetOpen, setPresetOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const settingsOpen = useApp((s) => s.settingsOpen);
+  const openSettings = useApp((s) => s.openSettings);
+  const closeSettings = useApp((s) => s.closeSettings);
   const clearScenario = useApp((s) => s.clearScenario);
   const exportJson = useApp((s) => s.exportJson);
   const importJson = useApp((s) => s.importJson);
@@ -205,6 +209,16 @@ export function Toolbar() {
           }}
         />
         <span className="mx-0.5 h-5 w-px bg-slate-800" aria-hidden />
+        {/* 用户设置（FR-86）：目前是无线动画的表现形式 */}
+        <button
+          type="button"
+          onClick={openSettings}
+          title="用户设置（无线连接动画）"
+          aria-label="用户设置"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-700 text-slate-300 transition hover:border-sky-500 hover:text-sky-300"
+        >
+          <Icon node={uiIcon('settings')} size={16} />
+        </button>
         {/* 顶栏最右侧：GitHub 图标按钮，指向 git 远端对应的仓库 */}
         <a
           href={REPO_URL}
@@ -220,6 +234,7 @@ export function Toolbar() {
 
       {presetOpen && <PresetDialog onClose={() => setPresetOpen(false)} />}
       {aboutOpen && <AboutDialog onClose={() => setAboutOpen(false)} />}
+      {settingsOpen && <SettingsDialog onClose={closeSettings} />}
     </header>
   );
 }

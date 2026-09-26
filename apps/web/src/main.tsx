@@ -7,7 +7,7 @@ import { pointAtRatio, nearestRatio } from './lib/polyline';
 import { linkPath, deviceRect } from './render/draw';
 import { coverageHandlePoint, coverageView } from './lib/coverage';
 import { measureWireless } from '@toposmith/anvil';
-import { signalGeometry, signalLinks } from './render/signals';
+import { providerGroups, signalGeometry, signalLinks } from './render/signals';
 import { worldContentBounds } from './lib/fit';
 import { useApp } from './state/store';
 import './index.css';
@@ -109,6 +109,21 @@ if (import.meta.env.DEV) {
     },
     /** 画信号波的那些关联（条数 = 覆盖层上应该有几组信号波） */
     signalLinkIds: () => signalLinks(useApp.getState().world).map((link) => link.id),
+    /**
+     * 每台无线提供方**实际使用**的动画形态（FR-86）。
+     * 端到端脚本据此断言"用户设置统一覆盖 / 遵照设备"两条路径的解析结果，
+     * 以及九种形态各自都能画出来。
+     */
+    animationStyles: () => {
+      const state = useApp.getState();
+      return providerGroups(state.world, state.viewport, state.settings.wirelessAnimation).map((group) => ({
+        deviceId: group.deviceId,
+        deviceName: group.device.name,
+        style: group.style,
+        peers: group.peers.length,
+      }));
+    },
+    settings: () => useApp.getState().settings,
     /**
      * 信号波的几何（屏幕坐标）：端到端脚本据此断言"以卡片中心为原点、沿直线、
      * 平行弧线"这三件事，而不是靠肉眼看截图。

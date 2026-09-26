@@ -24,6 +24,8 @@ import {
   Antenna,
   Maximize2,
   Ruler,
+  Settings,
+  Sparkles,
   Cable,
   Cctv,
   ChevronRight,
@@ -136,7 +138,9 @@ export type UiIconName =
   | 'chevron-right'
   | 'search'
   | 'measure'
-  | 'maximize';
+  | 'maximize'
+  | 'settings'
+  | 'animation';
 
 const UI_ICON: Record<UiIconName, IconNode> = {
   'align-left': AlignStartVertical,
@@ -158,6 +162,8 @@ const UI_ICON: Record<UiIconName, IconNode> = {
   search: Search,
   measure: Ruler, // "测量这一点"
   maximize: Maximize2, // "适应视图"
+  settings: Settings, // 用户设置
+  animation: Sparkles, // 动画表现形式
 };
 
 export function uiIcon(name: UiIconName): IconNode {

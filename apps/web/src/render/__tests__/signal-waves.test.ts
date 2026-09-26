@@ -10,7 +10,8 @@ import { describe, expect, it } from 'vitest';
 import { instantiate } from '@toposmith/catalog';
 import { SCHEMA_VERSION, deviceCenter, type Cable, type Device, type Scenario } from '@toposmith/schema';
 import { buildWorld } from '@toposmith/anvil';
-import { ARCS_PER_GROUP, waveFrontRadius, waveFrontRatios, waveFronts } from '../signals';
+import { waveFrontRadius, waveFrontRatios, waveFronts } from '../signals';
+import { ARCS_PER_GROUP } from '../signal-styles';
 
 const from = { x: 0, y: 0 };
 const to = { x: 400, y: 0 };

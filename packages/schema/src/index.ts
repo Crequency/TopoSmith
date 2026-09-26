@@ -581,6 +581,126 @@ export function normalizeAzimuth(azimuthDeg: number): number {
   return ((azimuthDeg % 360) + 360) % 360;
 }
 
+/**
+ * 无线关联的**动画表现形式**（FR-86）。
+ *
+ * 无线关联不画线，改用动画表达"这一刻是通的、以什么方式在传"。不同的动画不是装饰：
+ * 各自对应一类真实的无线行为（覆盖扩散、波束成形、数据传输、链路建立、小区切换、
+ * 高频传播、大规模天线阵列、信令心跳），用户按要讲的故事选。
+ */
+export type WirelessAnimationStyle =
+  /** 信号波：三条一组弧线沿直线推进（**默认**，也是本产品最初的形态） */
+  | 'waves'
+  /** 信号涟漪：从设备向外扩散的同心圆波纹 —— 表达覆盖范围与广播 */
+  | 'ripple'
+  /** 波束扫描：扇形光束扫描并锁定设备 —— 表达 5G 波束成形 */
+  | 'beam'
+  /** 数据流光点：光点沿连接线来回移动 —— 表达数据传输与低延迟 */
+  | 'stream'
+  /** 连接线：设备之间出现带脉冲的动态连线 —— 表达连接建立与切换 */
+  | 'line'
+  /** 蜂窝网格：六边形蜂窝单元 —— 表达蜂窝网络与移动性 */
+  | 'cell'
+  /** 电磁波：正弦波沿路径传播，频率越高越密 —— 表达毫米波与高频段 */
+  | 'em'
+  /** Massive MIMO 波束：多个波束同时指向不同设备 —— 表达大规模天线阵列 */
+  | 'mimo'
+  /** 脉冲闪烁：设备图标有节奏地闪烁 —— 表达心跳与信令交互 */
+  | 'pulse';
+
+/** 全部表现形式（顺序即 UI 里的顺序：默认排第一，其余按"从覆盖到数据"排列） */
+export const WIRELESS_ANIMATION_STYLES: readonly WirelessAnimationStyle[] = [
+  'waves',
+  'ripple',
+  'beam',
+  'stream',
+  'line',
+  'cell',
+  'em',
+  'mimo',
+  'pulse',
+];
+
+/** 默认动画：设备没有单独指定、也没有被用户设置统一覆盖时用它 */
+export const DEFAULT_WIRELESS_ANIMATION: WirelessAnimationStyle = 'waves';
+
+export interface WirelessAnimationMeta {
+  /** 中文名（用户对照表里的名称） */
+  label: string;
+  /** 英文名（与中文名一起显示，便于对照资料） */
+  latin: string;
+  /** 它表达什么（选型时的判断依据） */
+  scene: string;
+  /** 画成什么样（一句话描述几何形态） */
+  form: string;
+}
+
+export const WIRELESS_ANIMATION_META: Record<WirelessAnimationStyle, WirelessAnimationMeta> = {
+  waves: {
+    label: '信号波',
+    latin: 'Signal Waves',
+    scene: '默认形态：通用无线关联',
+    form: '三条一组弧线沿直线推进',
+  },
+  ripple: {
+    label: '信号涟漪',
+    latin: 'Ripple',
+    scene: '信号覆盖范围、广播',
+    form: '从设备向外扩散的同心圆波纹',
+  },
+  beam: {
+    label: '波束扫描',
+    latin: 'Beam Sweeping',
+    scene: '5G 波束成形（Beamforming）',
+    form: '扇形光束在空间中扫描并锁定设备',
+  },
+  stream: {
+    label: '数据流光点',
+    latin: 'Data Stream',
+    scene: '数据传输、低延迟',
+    form: '光点沿连接线在两端来回移动',
+  },
+  line: {
+    label: '连接线',
+    latin: 'Connection Line',
+    scene: '建立连接、切换',
+    form: '两端之间的动态连线，带脉冲',
+  },
+  cell: {
+    label: '蜂窝网格',
+    latin: 'Cell Grid',
+    scene: '蜂窝网络、移动性',
+    form: '六边形蜂窝单元，终端在其中移动',
+  },
+  em: {
+    label: '电磁波',
+    latin: 'EM Wave',
+    scene: '毫米波、高频段',
+    form: '正弦波沿路径传播，频率越高越密',
+  },
+  mimo: {
+    label: 'Massive MIMO 波束',
+    latin: 'Massive MIMO',
+    scene: '大规模天线阵列',
+    form: '多个波束同时指向不同设备',
+  },
+  pulse: {
+    label: '脉冲闪烁',
+    latin: 'Pulse',
+    scene: '心跳、信令交互',
+    form: '设备图标有节奏地闪烁',
+  },
+};
+
+export function isWirelessAnimationStyle(value: unknown): value is WirelessAnimationStyle {
+  return typeof value === 'string' && (WIRELESS_ANIMATION_STYLES as readonly string[]).includes(value);
+}
+
+/** 规范到合法值：非法/缺省一律回落到默认动画 */
+export function normalizeAnimationStyle(value: unknown): WirelessAnimationStyle {
+  return isWirelessAnimationStyle(value) ? value : DEFAULT_WIRELESS_ANIMATION;
+}
+
 export interface WirelessRadio {
   mode: 'ap' | 'sta';
   ssid?: string;
@@ -601,6 +721,14 @@ export interface WirelessRadio {
    * 关联是否成立由引擎按几何判定（超出覆盖＝不成立，见 D-57）。
    */
   coverage?: RadioCoverage;
+  /**
+   * 这台设备自己的动画表现形式（FR-86）。
+   *
+   * 缺省 = 跟随用户设置：用户设置若选了"统一动画"就用统一的那一个，
+   * 否则用 `DEFAULT_WIRELESS_ANIMATION`（信号波）。动画由**提供覆盖的一方**决定 ——
+   * 它画的是"这个无线信号长什么样"，而不是"终端怎么接收"。
+   */
+  animation?: WirelessAnimationStyle;
 }
 
 /* ────────────────────────────── 设备 ────────────────────────────── */

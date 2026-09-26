@@ -53,6 +53,14 @@ import {
 } from '@toposmith/schema';
 import { History } from '../lib/history';
 import {
+  DEFAULT_SETTINGS,
+  loadStoredSettings,
+  normalizeWirelessAnimationSetting,
+  persistSettings,
+  type UserSettings,
+  type WirelessAnimationSetting,
+} from '../lib/settings';
+import {
   NODE_H,
   NODE_W,
   MAX_RACK_HEIGHT_U,
@@ -202,6 +210,13 @@ interface AppState {
   cardDropTarget: { side: SidebarSide; index: number } | null;
   /** 命令菜单（Ctrl/Cmd+Shift+P）是否打开 */
   paletteOpen: boolean;
+  /**
+   * 用户设置（使用偏好，与拓扑分开落盘）：当前只有无线动画的表现形式（FR-86）。
+   * 两层结构：这里的 `wirelessAnimation` 决定"统一覆盖"还是"遵照每台设备"。
+   */
+  settings: UserSettings;
+  /** 设置弹窗是否打开 */
+  settingsOpen: boolean;
 
   /* 视图与选择 */
   select: (selection: Selection) => void;
@@ -218,6 +233,11 @@ interface AppState {
   beginCardDrag: (cardId: string, side: SidebarSide) => void;
   setCardDropTarget: (target: { side: SidebarSide; index: number } | null) => void;
   endCardDrag: () => void;
+  /* 用户设置（FR-86） */
+  setWirelessAnimation: (setting: WirelessAnimationSetting) => void;
+  resetSettings: () => void;
+  openSettings: () => void;
+  closeSettings: () => void;
   /* 命令菜单（FR-71） */
   openPalette: () => void;
   closePalette: () => void;
@@ -558,6 +578,8 @@ export const useApp = create<AppState>((set, get) => {
     canvasSize: { width: 800, height: 600 },
     linkMode: false,
     linkDraft: null,
+    settings: loadStoredSettings(),
+    settingsOpen: false,
     cableDefaults: { type: 'cat6', lengthM: DEFAULT_LENGTH.cat6 },
     diag: initialDiag(initialWorld),
     animation: { token: 0, playing: false, rate: 1 },
@@ -743,6 +765,22 @@ export const useApp = create<AppState>((set, get) => {
         }),
       });
     },
+
+    /* ── 用户设置（FR-86） ── */
+    setWirelessAnimation: (setting) => {
+      const next: UserSettings = { wirelessAnimation: normalizeWirelessAnimationSetting(setting) };
+      set({ settings: next });
+      persistSettings(next);
+    },
+
+    resetSettings: () => {
+      set({ settings: DEFAULT_SETTINGS });
+      persistSettings(DEFAULT_SETTINGS);
+      get().showToast('已恢复默认设置：无线动画＝信号波（每台设备可单独指定）。', 'info');
+    },
+
+    openSettings: () => set({ settingsOpen: true }),
+    closeSettings: () => set({ settingsOpen: false }),
 
     /* ── 连线 ── */
     setLinkMode: (on) => set({ linkMode: on, linkDraft: null }),
