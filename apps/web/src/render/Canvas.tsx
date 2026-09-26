@@ -510,6 +510,8 @@ export function TopologyCanvas() {
       width,
       height,
       phase,
+      // 形态来自用户设置 + 每台设备的单独设置（FR-86）
+      animation: store.settings.wirelessAnimation,
     });
   }, []);
 

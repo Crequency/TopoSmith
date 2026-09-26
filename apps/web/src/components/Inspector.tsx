@@ -14,6 +14,7 @@ import {
 import {
   DEFAULT_LABEL_RATIO,
   DEVICE_KIND_LABEL,
+  DEFAULT_WIRELESS_ANIMATION,
   DEVICE_SUBTYPE_LABEL,
   MAX_COVERAGE_RADIUS_M,
   MAX_SECTOR_ANGLE_DEG,
@@ -36,8 +37,11 @@ import {
   type PortMedium,
   type PortRole,
   type PortSide,
+  WIRELESS_ANIMATION_META,
+  WIRELESS_ANIMATION_STYLES,
   type RadioCoverage,
   type RadioStandard,
+  type WirelessAnimationStyle,
   type WifiBand,
   type WirelessRadio,
 } from '@toposmith/schema';
@@ -55,6 +59,13 @@ import {
   type AlignMode,
 } from '../lib/geometry';
 import { speedColor } from '../lib/speed-color';
+import {
+  animationChoiceOf,
+  animationSource,
+  resolveAnimationStyle,
+  styleFromChoice,
+  type DeviceAnimationChoice,
+} from '../lib/settings';
 import { QUALITY_LABEL } from '../lib/wireless-labels';
 import { deviceIcon, Icon, uiIcon, type UiIconName } from '../lib/icons';
 import { defaultCoverageFor, isRackable } from '@toposmith/catalog';
@@ -1317,8 +1328,9 @@ function DeviceInspector({ device, world }: { device: Device; world: World }) {
         </Section>
       )}
 
-      {/* 覆盖区域：只有提供接入的一端（AP / 家用网关 / 基站）才有 */}
+      {/* 覆盖区域与动画：只有提供接入的一端（AP / 家用网关 / 基站）才有 */}
       {device.wireless?.mode === 'ap' && <CoverageSection device={device} world={world} />}
+      {device.wireless?.mode === 'ap' && <AnimationSection device={device} />}
 
       <p className="text-[10px] leading-snug text-slate-600">
         当前待用线缆：{cableLabel(cableTypeLabel)}（在顶部工具栏切换）。端口仅展示介质与速率，
@@ -1326,6 +1338,81 @@ function DeviceInspector({ device, world }: { device: Device; world: World }) {
       </p>
     </div>
   );
+}
+
+/**
+ * 无线动画（FR-86）
+ *
+ * 动画由**提供覆盖的一方**决定（AP / 家用网关的无线侧 / 基站）：它画的是"这个无线信号
+ * 长什么样"。所以这一节只出现在 `mode === 'ap'` 的设备上，并在文案里说明
+ * "当前生效的是哪一种、它是从哪来的"（用户设置统一覆盖 / 这台设备单独设置 / 默认）。
+ */
+function AnimationSection({ device }: { device: Device }) {
+  const patchDevice = useApp((s) => s.patchDevice);
+  const setting = useApp((s) => s.settings.wirelessAnimation);
+
+  const choice = animationChoiceOf(device.wireless?.animation);
+  const effective = resolveAnimationStyle(setting, device.wireless?.animation);
+  const source = animationSource(setting, device.wireless?.animation);
+  const sourceText =
+    source === 'unified'
+      ? '来自用户设置（统一动画覆盖）'
+      : source === 'device'
+        ? '来自这台设备的单独设置'
+        : `默认动画${setting.mode === 'per-device' ? '' : '（用户设置未覆盖时）'}`;
+
+  return (
+    <Section
+      title="无线动画"
+      hint="这台设备（提供无线接入的一方）用哪种形式表达「正在连通」；九种形态各自对应一类真实的无线行为"
+    >
+      <Field
+        label="表现形式"
+        hint={
+          setting.mode === 'unified'
+            ? '用户设置已开启「统一动画」，这里的选择暂不生效（可在用户设置里改回"遵照每台设备"）'
+            : '「跟随默认」＝用默认动画（信号波），也可以给这台设备单独指定一种'
+        }
+      >
+        <Select<DeviceAnimationChoice>
+          value={choice}
+          options={[
+            { value: 'inherit', label: `跟随默认（${WIRELESS_ANIMATION_META[DEFAULT_WIRELESS_ANIMATION].label}）` },
+            ...WIRELESS_ANIMATION_STYLES.map((style) => ({
+              value: style as DeviceAnimationChoice,
+              label: `${WIRELESS_ANIMATION_META[style].label}（${WIRELESS_ANIMATION_META[style].latin}）`,
+            })),
+          ]}
+          onChange={(next) =>
+            patchDevice(device.id, (d) => {
+              const current = d.wireless ?? { mode: 'ap' as const };
+              const style: WirelessAnimationStyle | undefined = styleFromChoice(next);
+              d.wireless = style ? { ...current, animation: style } : omitAnimation(current);
+            })
+          }
+        />
+      </Field>
+
+      <p className="text-[10px] leading-snug text-slate-500">
+        当前生效：<span className="text-slate-300">{WIRELESS_ANIMATION_META[effective].label}</span>
+        <span className="text-slate-600"> · {WIRELESS_ANIMATION_META[effective].form}</span>
+        <br />
+        来源：{sourceText}
+        {setting.mode === 'unified' && (
+          <>
+            （用户设置里想让单台设备例外，把「统一动画」改回「遵照每台设备」即可）
+          </>
+        )}
+      </p>
+    </Section>
+  );
+}
+
+/** 去掉 animation 字段（"跟随默认"就是没有这个字段），而不是写一个假值 */
+function omitAnimation(radio: WirelessRadio): WirelessRadio {
+  const next = { ...radio };
+  delete next.animation;
+  return next;
 }
 
 /**
