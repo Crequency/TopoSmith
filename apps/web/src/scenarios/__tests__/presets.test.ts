@@ -8,7 +8,13 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { validateScenario, type Scenario } from '@toposmith/schema';
+import {
+  WIRELESS_ANIMATION_META,
+  WIRELESS_ANIMATION_STYLES,
+  validateScenario,
+  type Scenario,
+} from '@toposmith/schema';
+import { radioChannelFrequencyMhz } from '@toposmith/catalog';
 import { bandwidth, buildWorld, dnsPath, ping, type DiagResult, type World } from '@toposmith/anvil';
 import { PRESETS, presetByKey, presetSize } from '..';
 
@@ -63,7 +69,9 @@ describe('预置场景登记表', () => {
       const size = presetSize(preset);
       // 太小演示不出东西；IDC 那套是**规模压测场景**，允许到千级
       expect(size.devices).toBeGreaterThanOrEqual(8);
-      expect(size.devices).toBeLessThanOrEqual(preset.key === 'idc' ? 1000 : 20);
+      // 动画总览场景要放下九个小区（9 台提供方 + 11 台终端 + 3 台接入设备）
+      const deviceCap = preset.key === 'idc' ? 1000 : preset.key === 'animations' ? 40 : 20;
+      expect(size.devices).toBeLessThanOrEqual(deviceCap);
       expect(size.cables).toBeGreaterThanOrEqual(6);
     }
   });
@@ -603,5 +611,85 @@ describe('蜂窝网络场景', () => {
     const after = buildWorld(scenario).links.find((l) => l.id === 'cbl-nr-a-out')!;
     expect(after.up).toBe(true);
     expect(after.speedMbps).toBe(1000);
+  });
+});
+
+describe('无线动画总览场景', () => {
+  it('结构：九台提供接入的设备，每种动画各一台（含默认信号波）', () => {
+    const { scenario } = build('animations');
+    const providers = scenario.devices.filter((device) => device.wireless?.mode === 'ap');
+    expect(providers).toHaveLength(WIRELESS_ANIMATION_STYLES.length);
+    const used = new Set(providers.map((device) => device.wireless?.animation));
+    expect(used.size).toBe(WIRELESS_ANIMATION_STYLES.length);
+    for (const style of WIRELESS_ANIMATION_STYLES) expect(used.has(style)).toBe(true);
+    // 每一台都**显式**指定了形态：这一屏不能靠用户设置来猜
+    for (const provider of providers) {
+      expect(provider.wireless?.coverage).toBeDefined();
+      expect(provider.wireless?.animation).toBeDefined();
+    }
+  });
+
+  it('设备名就是图例：每台设备的名字里带自己的动画名', () => {
+    const { scenario } = build('animations');
+    const providers = scenario.devices.filter((device) => device.wireless?.mode === 'ap');
+    for (const provider of providers) {
+      const meta = WIRELESS_ANIMATION_META[provider.wireless!.animation!];
+      expect(provider.name).toContain(meta.label === '信号波' ? '信号波' : meta.label);
+    }
+  });
+
+  it('每一格的关联都成立（终端都在圈内），所以九种动画都会画出来', () => {
+    const { scenario, world } = build('animations');
+    const wireless = world.links.filter((link) => link.family === 'wireless');
+    const providerCount = scenario.devices.filter((d) => d.wireless?.mode === 'ap').length;
+    // 九格各一条基本关联 + Massive MIMO 那一格多挂的两台
+    expect(providerCount).toBe(WIRELESS_ANIMATION_STYLES.length);
+    expect(wireless.length).toBe(providerCount + 2);
+    for (const link of wireless) {
+      expect(link.up, `${link.id} 不该断：${link.issues.map((i) => i.code).join('+')}`).toBe(true);
+      expect(link.issues.map((i) => i.code)).not.toContain('WIRELESS_OUT_OF_COVERAGE');
+    }
+  });
+
+  it('Massive MIMO 那一格真的是一对多：同一天线阵列下挂三台终端', () => {
+    const { world } = build('animations');
+    const mimo = world.devices.get('dev-mimo')!;
+    const radio = mimo.ports.find((port) => port.medium === 'wifi')!;
+    const associations = world.links.filter(
+      (link) => link.family === 'wireless' && (link.a.deviceId === mimo.id || link.b.deviceId === mimo.id),
+    );
+    expect(associations).toHaveLength(3);
+    void radio;
+  });
+
+  it('电磁波那一格放在 6 GHz（频点最高 → 波长最短 → 波最密）', () => {
+    const { scenario } = build('animations');
+    const em = scenario.devices.find((device) => device.wireless?.animation === 'em')!;
+    expect(em.wireless?.band).toBe('6G');
+    const emFreq = radioChannelFrequencyMhz(em.wireless!.standard!, em.wireless!.band, em.wireless!.channel);
+    // 比同一屏里任何一台 WiFi 设备的频点都高
+    for (const device of scenario.devices) {
+      const radio = device.wireless;
+      if (!radio?.band || radio.mode !== 'ap') continue;
+      const freq = radioChannelFrequencyMhz(radio.standard!, radio.band, radio.channel);
+      expect(emFreq).toBeGreaterThanOrEqual(freq);
+    }
+  });
+
+  it('不是只有动画：这一屏的地址与出口也是通的（终端能上公网、能解析域名）', () => {
+    const { scenario, world } = build('animations');
+    const wifiLink = scenario.cables.find((cable) => cable.id === 'cbl-nr-ripple-1')!;
+    const terminal = wifiLink.b.deviceId;
+    expect(world.leases.get(terminal)?.ok).toBe(true);
+    expect(ping(world, terminal, '203.0.113.1').ok).toBe(true);
+    // 基站那一格（蜂窝终端）也能经回程上公网
+    const cellLink = scenario.cables.find((cable) => cable.id === 'cbl-nr-cell-1')!;
+    expect(ping(world, cellLink.b.deviceId, '203.0.113.1').ok).toBe(true);
+  });
+
+  it('场景通过导入校验', () => {
+    const result = validateScenario(presetByKey('animations')!.build());
+    if (!result.ok) throw new Error(result.errors.join('；'));
+    expect(result.ok).toBe(true);
   });
 });
