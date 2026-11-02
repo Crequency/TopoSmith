@@ -6,11 +6,12 @@
 #   scripts/image-push.sh 0.2.0        # 指定 tag
 #   HARBOR_PROJECT=other scripts/image-push.sh
 #
-# 默认推到 **crequency** 项目：
-#   registry.example.com/crequency/toposmith
+# 目标 registry 由环境变量给出（脚本不内置任何私有地址）：
+#   HARBOR_HOST=registry.example.com scripts/image-push.sh
+#   默认推到 **crequency** 项目（可用 HARBOR_PROJECT 改）
 #
 # 前置：
-#   1. 已登录：docker login registry.example.com
+#   1. 已登录：docker login "$HARBOR_HOST"
 #   2. 账号对该项目有推送权限（本机 ~/.docker/config.json 里已有登录记录时不必重复登录）
 #
 # 注意：容器端口是 **41006 = 开发端口 31006 + 10000**（见 Caddyfile / Dockerfile），
@@ -18,7 +19,7 @@
 
 set -euo pipefail
 
-HARBOR_HOST="${HARBOR_HOST:-registry.example.com}"
+HARBOR_HOST="${HARBOR_HOST:?请先设置 HARBOR_HOST（你的私有 registry，例如 registry.example.com）}"
 HARBOR_PROJECT="${HARBOR_PROJECT:-crequency}"
 IMAGE_NAME="${IMAGE_NAME:-toposmith}"
 PUSH_LATEST="${PUSH_LATEST:-1}"

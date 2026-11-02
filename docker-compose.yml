@@ -8,7 +8,7 @@
 # 用法：
 #   docker compose up -d --build              # 本地构建并起（宿主 41006）
 #   TOPOSMITH_PORT=31006 docker compose up -d # 映射到别的宿主端口（例如开发端口）
-#   docker compose pull && docker compose up -d   # 直接跑 Harbor 上的镜像
+#   docker compose pull && docker compose up -d   # 直接跑已发布的镜像（改下面的 image 或用 TOPOSMITH_IMAGE）
 #   docker compose down                       # 停掉
 #
 # 注意：映射到 31006 会与 `devctl start toposmith dev` 起的开发服务器抢端口 ——
@@ -18,7 +18,7 @@ services:
   toposmith:
     # 两个来源都写上：本地改动用 `up --build` 构建；想跑已发布版本用 `pull`
     build: .
-    image: registry.example.com/crequency/toposmith:latest
+    image: ${TOPOSMITH_IMAGE:-registry.example.com/crequency/toposmith:latest}
 
     container_name: toposmith
 

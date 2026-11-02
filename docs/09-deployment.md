@@ -103,15 +103,17 @@ Docker 会把宿主/守护进程的代理配置注入容器（`HTTP_PROXY=…`�
 
 ## 8. 镜像仓库与推送
 
-镜像发布在自建 Harbor 的 **crequency** 项目：
+镜像可以发布到任意私有 registry（Harbor / GHCR / 自建都行）。脚本**不内置任何私有地址**，
+由环境变量给出（示例用占位域名与 `crequency` 项目名）：
 
 ```
-registry.example.com/crequency/toposmith:0.1.0
-registry.example.com/crequency/toposmith:latest
+<你的-registry>/crequency/toposmith:0.1.0
+<你的-registry>/crequency/toposmith:latest
 ```
 
 ```bash
-docker login registry.example.com     # 首次
+export HARBOR_HOST=registry.example.com           # 换成你的 registry
+docker login "$HARBOR_HOST"                       # 首次
 scripts/image-push.sh                             # 构建 + 推送（tag = package.json 版本 + latest）
 scripts/image-push.sh 0.2.0                       # 指定 tag
 HARBOR_PROJECT=other scripts/image-push.sh        # 换项目
