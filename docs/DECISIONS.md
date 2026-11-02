@@ -101,7 +101,7 @@
 
 - **背景**：用户指定端口与信任域名；全局规则要求长驻服务统一由 `devctl` 管理。
 - **决策**：`vite.config.ts` 硬编码 `port: 31006` + `strictPort: true` + `host: '0.0.0.0'`，
-  `allowedHosts` 含 `toposmith.example.local`；
+  `allowedHosts: true`（放行全部域名 —— 真实域名属环境事实，只落 `.meta/`，不进仓库）；
   启停一律走 `devctl start/stop toposmith dev`，**禁止裸 `pnpm dev &`**。
 - **理由**：端口即所有权（DevHub R5）；DevHub 只登记不分配端口，端口由项目自身决定。
 - **代价**：端口冲突时需人工决定谁让位，不自动漂移。
@@ -154,9 +154,9 @@
 ## D-15 本机环境：代理、只读全局 store、pnpm 11 不读 .npmrc
 
 - **背景**（三者在落地时全部实测踩到，非推测）：
-  1. **代理**：会话环境变量 `http_proxy/https_proxy = http://<代理地址>`，该地址
+  1. **代理**：会话环境变量 `http_proxy/https_proxy` 指向一个**已失效**的旧地址，该地址
      `No route to host`。而 `/etc/profile.d/proxy.sh`（系统登录 shell 的配置）写的是
-     **`<代理地址>`，实测可用**（经它访问 registry 返回 200）。
+     **新地址，实测可用**（经它访问 registry 返回 200）。具体地址属环境事实，见 `.meta/`。
      两者不一致的原因是 **2026-09-14 做过一次代理迁移**——`/etc` 下留有一批
      `*.bak-pre-proxy-20260914` 备份文件，而本会话的进程环境仍是迁移前的旧值。
      结论：**会话继承的代理是过期值，不是"代理不可用"**。直连 registry 同样可用。
@@ -167,7 +167,7 @@
 - **决策**：
   - 安装/构建命令显式绕过会话里的过期代理
     （`env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY pnpm …`）；
-    若将来需要走代理，正确地址是 **`http://<代理地址>`**（来自 `/etc/profile.d/proxy.sh`）。
+    若将来需要走代理，正确地址在 `/etc/profile.d/proxy.sh` 里（属环境事实，只落 `.meta/`）。
   - `pnpm-workspace.yaml` 设 `storeDir` 指向工作区内的 `.pnpm-shared-store`，并
     `allowBuilds: esbuild: true`；
   - 保留 `.npmrc` 但注明"对 pnpm 11 不生效，仅为 npm 与文档留底"。

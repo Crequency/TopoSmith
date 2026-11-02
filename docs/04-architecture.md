@@ -173,6 +173,6 @@ toposmith/
 | 项 | 值 |
 |---|---|
 | 监听 | `0.0.0.0:31006`（`strictPort: true`，不自动漂移） |
-| 信任域名 | `toposmith.example.local` |
+| 信任域名 | `allowedHosts: true`（放行全部；Vite 的通配语义就是 `true`，`*` 字面量不受支持） |
 | 启动方式 | 必须经 DevHub：`devctl start toposmith dev`（禁止裸 `pnpm dev &`） |
 | 端口来源 | 由项目自身 `vite.config.ts` 硬编码决定，DevHub 只登记不分配 |

@@ -43,11 +43,21 @@ export default defineConfig({
   },
   plugins: [react(), tailwindcss()],
   server: {
+    /** 监听 0.0.0.0：本机、容器与局域网都能访问 */
     host: '0.0.0.0',
     port: 31006,
     strictPort: true,
-    // 信任域名：拓扑匠的开发入口（其余域名/裸 IP 一律拒绝）
-    allowedHosts: ['toposmith.example.local', 'localhost', '127.0.0.1'],
+    /*
+     * 信任域名：**放行全部**（`true` 就是 Vite 的通配语义）。
+     *
+     * 不写任何具体域名：真实域名属于环境事实（按工作区规则只落 `.meta/`），
+     * 写死还会在换机器 / 换域名时 403。
+     *
+     * 注意 Vite 8 的实现（`isHostAllowedInternal`）**没有** `'*'` 分支：
+     * 列表里的 `'*'` 只会与字面量 `*` 相等，反而把带域名的访问全拒掉
+     * （`localhost` 与裸 IPv4/IPv6 是硬编码放行的例外）。所以通配必须写 `true`。
+     */
+    allowedHosts: true,
   },
   build: {
     target: 'es2022',
@@ -56,7 +66,7 @@ export default defineConfig({
      *
      * Vite 默认在 500 kB 上报"chunk 过大"，而本项目是**一个工具页面**：
      * 首屏就是工作台，没有"以后再看"的路由可以切分，默认阈值反而会变成长期噪声。
-     * 这里给出的是明确的预算而不是关掉检查 —— 当前的实测值是 507 kB / 157 kB gzip，
+     * 这里给出的是明确的预算而不是关掉检查 —— 当前的实测值是 554 kB / 171 kB gzip，
      * 逼近预算时应当先做真正的代码分割（预置场景生成器是最大的可切分块），
      * 而不是继续抬这个数字（见 docs/08-roadmap.md 的 M2 性能计划）。
      */

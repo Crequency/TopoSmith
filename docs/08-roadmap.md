@@ -284,7 +284,7 @@
 |---|---|---|
 | 内核命名（D-54） | 包名 `@toposmith/engine` → **`@toposmith/anvil`**（铁砧），目录仍是 `packages/engine`（名字给消费者看、目录名给贡献者看）；README 增补内核一节 | 改动面 17 个 import + 清单 + 文档；`pnpm check` 全绿（45 + 221 项）、构建与浏览器套件全通过 |
 | 容器化与镜像发布（D-55） | `Dockerfile`（多阶段：Node 构建 → `caddy:2-alpine`，镜像里无 Node）+ `Caddyfile`（`/assets/*` 只认真实文件、缺失 404；哈希资源 `immutable`、入口 `no-cache`；容器内不做 TLS）+ `.dockerignore` + `docker-compose.yml`（宿主端口映射可覆盖）+ `scripts/image-push.sh` | 真机构建通过（90.2 MB、非 root uid 1000），真容器跑通并用浏览器验证；已推送 Harbor `crequency/toposmith`（`0.1.0` + `latest`，digest `sha256:61a13c4c…`）并从 registry 回拉运行验证；CI 新增 `image` 任务（构建 + 容器冒烟，不推送），实跑 63 s 全绿 |
-| README 收敛为门面 | README 从 294 行收到 191 行：容器/端口/compose/缓存策略/代理陷阱等实现细节移到新增的 `09-deployment.md`；开发环境、命令、代码约定、预置场景写法、品牌产物移到新增的 `CONTRIBUTING.md`；内部实测表只留一句结论并指向本文件；自建 Harbor 地址从 README 移出（属内部设施） | README 相对链接 16 个全部有效；`docs/04` §8 改为三行摘要 + 指向 09（避免两处各说一套）；`.npmrc` 里残留的本机代理/store 细节清掉（工作区那份 `TOPOSMITH-LOCAL-ENV.md` 才是它们的家） |
+| README 收敛为门面 | README 从 294 行收到 191 行：容器/端口/compose/缓存策略/代理陷阱等实现细节移到新增的 `09-deployment.md`；开发环境、命令、代码约定、预置场景写法、品牌产物移到新增的 `CONTRIBUTING.md`；内部实测表只留一句结论并指向本文件；自建 Harbor 地址从 README 移出（属内部设施） | README 相对链接 16 个全部有效；`docs/04` §8 改为三行摘要 + 指向 09（避免两处各说一套）；`.npmrc` 里残留的本机代理/store 细节清掉（那份本机备忘现在在工作区级 `.meta/crequency/toposmith/ENVIRONMENT.md`，不入库） |
 | 顺带修掉的既有缺陷 | 容器**自带的 HEALTHCHECK 在带代理的机器上必然误报**：Docker 把宿主代理注入容器，而 `caddy:2-alpine` 的 busybox `wget` 不认 `NO_PROXY` → 探针把 `127.0.0.1:41006` 发给代理、代理回 502 → 容器永远 `health: starting`（宿主 `curl` 却是 200） | 取证：`wget --spider` exit=1/502，`wget -Y off --spider` 与 `nc -z` 均 exit=0。按"不改镜像"的要求在 compose 层清空代理变量 → `health: healthy`；治本的一行改动（探针加 `-Y off` 或改 `nc -z`）已记录待办 |
 
 ### M0 第二十一轮迭代（用户反馈驱动，2026-09-18）

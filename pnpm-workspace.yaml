@@ -2,7 +2,7 @@
 #
 # 这里**刻意不写 storeDir**：pnpm store 的位置是"这台机器的事实"，
 # 写进仓库就会把绝对路径带到别人的机器上（本项目开发时需要在工作区内放 store，
-# 已改到本机用户级配置 ~/.npmrc；见工作区根目录的 TOPOSMITH-LOCAL-ENV.md）。
+# 已改到本机用户级 pnpm 配置；本机事实见工作区级 `.meta/crequency/toposmith/ENVIRONMENT.md`（不入库））。
 packages:
   - 'packages/*'
   - 'apps/*'

@@ -2,10 +2,11 @@
  * 取 Playwright 的 Chromium（`build-brand` 与 `screenshot` 共用）。
  *
  * 优先按标准方式解析（装了 playwright 就能用）；本机开发容器里 playwright 装在兄弟仓库，
- * 所以保留一条**兜底路径**，可用 `PLAYWRIGHT_PATH` 覆盖。写死路径会随机器变化失效，
- * 这里把它降级成最后的选择。
+ * 所以保留一条**兜底路径**（相对本脚本解析，不写死个人绝对路径），可用 `PLAYWRIGHT_PATH` 覆盖。
+ * 写死路径会随机器变化失效，这里把它降级成最后的选择。
  */
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 
@@ -13,7 +14,8 @@ export function loadChromium() {
   const candidates = [
     process.env['PLAYWRIGHT_PATH'],
     'playwright',
-    '~/dsh-workspaces/tools/watermark-studio/node_modules/playwright',
+    // 本机容器把 playwright 装在兄弟仓库：按脚本位置解析，不写死个人绝对路径
+    fileURLToPath(new URL('../../watermark-studio/node_modules/playwright', import.meta.url)),
   ].filter(Boolean);
   for (const candidate of candidates) {
     try {

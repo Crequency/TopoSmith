@@ -18,8 +18,8 @@
 <p align="center">
   <a href="https://github.com/Crequency/TopoSmith/actions/workflows/ci.yml"><img src="https://github.com/Crequency/TopoSmith/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/tests-45%20engine%20%C2%B7%20221%20web-brightgreen" alt="Tests">
-  <img src="https://img.shields.io/badge/build-482%20kB%20%C2%B7%20149%20kB%20gzip-blue" alt="Build size">
+  <img src="https://img.shields.io/badge/tests-73%20engine%20%C2%B7%20294%20web-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/build-554%20kB%20%C2%B7%20171%20kB%20gzip-blue" alt="Build size">
   <img src="https://img.shields.io/badge/TypeScript-strict-3178c6" alt="TypeScript strict">
   <img src="https://img.shields.io/badge/backend-none-8b5cf6" alt="No backend">
   <img src="https://img.shields.io/badge/status-M0-orange" alt="Status: M0">
@@ -190,6 +190,7 @@ toposmith/
   命令菜单 / store 行为 / 九套预置场景的行为承诺）；`pnpm check` 一次跑完；
 - **端到端与规模压测**用真实 Chromium 驱动，覆盖画布交互、四类诊断、侧栏排版与性能预算，
   实测数据记在 [`docs/08-roadmap.md`](docs/08-roadmap.md)（810 台设备场景：拖动中位帧 33 ms）；
+  脚本与截图属**本机产物**，放在工作区级 `.meta/crequency/toposmith/verify/`（不入库，见工作区 `AGENTS.md`）；
 - **已知缺口**（节点树无虚拟滚动、拖动态每帧重建世界等）同样记在路线图的"已知不足"里 ——
   不藏在代码注释里。
 
