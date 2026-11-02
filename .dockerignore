@@ -14,7 +14,6 @@ node_modules
 .github
 
 # 本机脚本与状态（端到端脚本、DevHub 登记、字体、日志）
-.verify
 .devhub-*.json
 .fonts
 *.log
